@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import heroImg from "@/assets/hero-home.jpg";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Home } from "lucide-react";
@@ -21,8 +22,8 @@ const Hero = () => (
           Track maintenance, manage expenses, and keep every detail of your property organized — all in one elegant platform.
         </p>
         <div className="flex gap-4 pt-4">
-          <Button size="lg" className="gap-2">
-            Get Started <ArrowRight className="h-4 w-4" />
+          <Button size="lg" className="gap-2" asChild>
+            <Link to="/pantry">Get Started <ArrowRight className="h-4 w-4" /></Link>
           </Button>
           <Button size="lg" variant="outline" className="border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground">
             Learn More
