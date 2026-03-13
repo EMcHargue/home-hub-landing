@@ -714,7 +714,7 @@ const Pantry = () => {
                     <CardContent className="py-4 flex items-center justify-between gap-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <AlertTriangle className="h-4 w-4 text-destructive" />
+                          <AlertTriangle className="h-4 w-4 text-accent" />
                           <span className="font-semibold text-foreground">{item.name}</span>
                           {item.brand && <span className="text-sm text-muted-foreground">{item.brand}</span>}
                           <Badge variant="secondary" className="text-xs">{item.category}</Badge>
