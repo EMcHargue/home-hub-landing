@@ -599,7 +599,7 @@ const Pantry = () => {
                 const isOpen = openGroups.has(dg.id);
                 return (
                   <Collapsible key={dg.id} open={isOpen} onOpenChange={() => toggleGroup(dg.id)}>
-                    <Card className="overflow-hidden transition-shadow hover:shadow-md">
+                    <Card className="overflow-hidden transition-shadow shadow-[var(--card-shadow)] hover:shadow-[var(--card-hover-shadow)] border-primary/10">
                       {/* Group / item header */}
                       <CollapsibleTrigger asChild>
                         <div className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none">
