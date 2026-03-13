@@ -9,6 +9,7 @@ import {
   FileText,
   ArrowRight,
   Home,
+  ListChecks,
 } from "lucide-react";
 
 const sections = [
