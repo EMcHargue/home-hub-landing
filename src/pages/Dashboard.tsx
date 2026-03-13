@@ -21,6 +21,13 @@ const sections = [
     ready: true,
   },
   {
+    title: "Chores",
+    description: "Create tasks, assign to household members, and track completion.",
+    icon: ListChecks,
+    href: "/chores",
+    ready: true,
+  },
+  {
     title: "Maintenance",
     description: "Schedule repairs, track service history, and manage contractors.",
     icon: Wrench,
