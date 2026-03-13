@@ -710,7 +710,7 @@ const Pantry = () => {
             ) : (
               <div className="grid gap-3">
                 {lowStockItems.map((item) => (
-                  <Card key={item.id} className="border-destructive/30">
+                  <Card key={item.id} className="border-accent/20 shadow-[var(--card-shadow)]">
                     <CardContent className="py-4 flex items-center justify-between gap-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
