@@ -9,6 +9,7 @@ import {
   FileText,
   ArrowRight,
   Home,
+  ListChecks,
 } from "lucide-react";
 
 const sections = [
@@ -17,6 +18,13 @@ const sections = [
     description: "Track inventory, restock items, and manage your shopping list.",
     icon: ShoppingBasket,
     href: "/pantry",
+    ready: true,
+  },
+  {
+    title: "Chores",
+    description: "Create tasks, assign to household members, and track completion.",
+    icon: ListChecks,
+    href: "/chores",
     ready: true,
   },
   {
