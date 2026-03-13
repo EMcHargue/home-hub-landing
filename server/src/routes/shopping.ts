@@ -1,6 +1,6 @@
 import { Router } from "express";
+import sql from "mssql";
 import { getPool } from "../db";
-import { v4 as uuidv4 } from "uuid";
 
 const router = Router();
 
@@ -12,7 +12,7 @@ router.get("/", async (req, res) => {
     const pool = await getPool();
     const result = await pool
       .request()
-      .input("user_id", user_id as string)
+      .input("user_id", sql.UniqueIdentifier, user_id as string)
       .query("SELECT * FROM dbo.shopping_list WHERE user_id = @user_id");
     res.json(result.recordset);
   } catch (err) {
@@ -23,23 +23,41 @@ router.get("/", async (req, res) => {
 
 // POST add item
 router.post("/", async (req, res) => {
-  const { user_id, pantry_item_id, item_name } = req.body;
+  const { user_id, pantry_item_id, item_name, requested_quantity, unit } = req.body;
   if (!user_id || !item_name) {
     return res.status(400).json({ error: "user_id and item_name required" });
   }
   try {
-    const id = uuidv4();
+    const pool = await getPool();
+    const result = await pool
+      .request()
+      .input("user_id",            sql.UniqueIdentifier, user_id)
+      .input("pantry_item_id",     sql.Int,              pantry_item_id || null)
+      .input("item_name",          sql.NVarChar(255),    item_name)
+      .input("requested_quantity", sql.Decimal(10, 3),   requested_quantity ?? null)
+      .input("unit",               sql.NVarChar(50),     unit || null)
+      .query(
+        "INSERT INTO dbo.shopping_list (user_id, pantry_item_id, item_name, requested_quantity, unit) OUTPUT INSERTED.id VALUES (@user_id, @pantry_item_id, @item_name, @requested_quantity, @unit)"
+      );
+    res.status(201).json({ id: result.recordset[0].id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "database error" });
+  }
+});
+
+// PUT update requested_quantity / unit
+router.put("/:id", async (req, res) => {
+  const { requested_quantity, unit } = req.body;
+  try {
     const pool = await getPool();
     await pool
       .request()
-      .input("id", id)
-      .input("user_id", user_id)
-      .input("pantry_item_id", pantry_item_id || null)
-      .input("item_name", item_name)
-      .query(
-        "INSERT INTO dbo.shopping_list (id,user_id,pantry_item_id,item_name) VALUES (@id,@user_id,@pantry_item_id,@item_name)"
-      );
-    res.status(201).json({ id });
+      .input("id",                 sql.Int,           parseInt(req.params.id))
+      .input("requested_quantity", sql.Decimal(10, 3), requested_quantity ?? null)
+      .input("unit",               sql.NVarChar(50),   unit ?? null)
+      .query("UPDATE dbo.shopping_list SET requested_quantity = @requested_quantity, unit = @unit WHERE id = @id");
+    res.json({ success: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "database error" });
@@ -52,7 +70,7 @@ router.delete("/:id", async (req, res) => {
     const pool = await getPool();
     await pool
       .request()
-      .input("id", req.params.id)
+      .input("id", sql.Int, parseInt(req.params.id))
       .query("DELETE FROM dbo.shopping_list WHERE id = @id");
     res.json({ success: true });
   } catch (err) {

@@ -1,6 +1,10 @@
 import { Router } from "express";
+import sql from "mssql";
 import { getPool } from "../db";
-import { v4 as uuidv4 } from "uuid";
+
+function errMsg(err: unknown) {
+  return err instanceof Error ? err.message : String(err);
+}
 
 const router = Router();
 
@@ -12,12 +16,12 @@ router.get("/", async (req, res) => {
     const pool = await getPool();
     const result = await pool
       .request()
-      .input("user_id", user_id as string)
+      .input("user_id", sql.UniqueIdentifier, user_id as string)
       .query("SELECT * FROM dbo.pantry_items WHERE user_id = @user_id");
     res.json(result.recordset);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "database error" });
+    res.status(500).json({ error: "database error", detail: errMsg(err) });
   }
 });
 
@@ -31,33 +35,36 @@ router.post("/", async (req, res) => {
     unit,
     min_quantity,
     expiration_date,
+    brand,
+    group_id,
   } = req.body;
   if (!user_id || !name || quantity == null || !unit || min_quantity == null) {
     return res.status(400).json({ error: "missing required fields" });
   }
   try {
-    const id = uuidv4();
     const pool = await getPool();
-    await pool
+    const result = await pool
       .request()
-      .input("id", id)
-      .input("user_id", user_id)
-      .input("category_id", category_id || null)
-      .input("name", name)
-      .input("quantity", quantity)
-      .input("unit", unit)
-      .input("min_quantity", min_quantity)
-      .input("expiration_date", expiration_date || null)
+      .input("user_id",         sql.UniqueIdentifier, user_id)
+      .input("category_id",     sql.Int,              category_id || null)
+      .input("name",            sql.NVarChar(255),    name)
+      .input("quantity",        sql.Decimal(10, 3),   quantity)
+      .input("unit",            sql.NVarChar(50),     unit)
+      .input("min_quantity",    sql.Decimal(10, 3),   min_quantity)
+      .input("expiration_date", sql.DateTime2,        expiration_date || null)
+      .input("brand",           sql.NVarChar(255),    brand || null)
+      .input("group_id",        sql.Int,              group_id || null)
       .query(`
         INSERT INTO dbo.pantry_items
-          (id,user_id,category_id,name,quantity,unit,min_quantity,expiration_date)
+          (user_id,category_id,name,quantity,unit,min_quantity,expiration_date,brand,group_id)
+        OUTPUT INSERTED.id
         VALUES
-          (@id,@user_id,@category_id,@name,@quantity,@unit,@min_quantity,@expiration_date)
+          (@user_id,@category_id,@name,@quantity,@unit,@min_quantity,@expiration_date,@brand,@group_id)
       `);
-    res.status(201).json({ id });
+    res.status(201).json({ id: result.recordset[0].id });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "database error" });
+    res.status(500).json({ error: "database error", detail: errMsg(err) });
   }
 });
 
@@ -65,36 +72,31 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   const { id } = req.params;
   const fields = req.body;
-  const allowed = [
-    "category_id",
-    "name",
-    "quantity",
-    "unit",
-    "min_quantity",
-    "expiration_date",
-  ];
+
+  const allowed = ["category_id", "name", "quantity", "unit", "min_quantity", "expiration_date", "brand", "group_id"];
   const setClauses: string[] = [];
-  const request = (await getPool()).request();
+  const request = (await getPool()).request().input("id", sql.Int, parseInt(id));
+
   allowed.forEach((f) => {
     if (fields[f] !== undefined) {
       setClauses.push(`${f} = @${f}`);
-      request.input(f, fields[f]);
+      if (f === "group_id" || f === "category_id") {
+        request.input(f, sql.Int, fields[f] || null);
+      } else {
+        request.input(f, fields[f]);
+      }
     }
   });
+
   if (setClauses.length === 0) {
     return res.status(400).json({ error: "no updatable fields provided" });
   }
   try {
-    request.input("id", id);
-    await request.query(`
-      UPDATE dbo.pantry_items
-      SET ${setClauses.join(",")}
-      WHERE id = @id
-    `);
+    await request.query(`UPDATE dbo.pantry_items SET ${setClauses.join(",")} WHERE id = @id`);
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "database error" });
+    res.status(500).json({ error: "database error", detail: errMsg(err) });
   }
 });
 
@@ -104,12 +106,12 @@ router.delete("/:id", async (req, res) => {
     const pool = await getPool();
     await pool
       .request()
-      .input("id", req.params.id)
+      .input("id", sql.Int, parseInt(req.params.id))
       .query("DELETE FROM dbo.pantry_items WHERE id = @id");
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "database error" });
+    res.status(500).json({ error: "database error", detail: errMsg(err) });
   }
 });
 

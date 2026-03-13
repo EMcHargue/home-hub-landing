@@ -1,4 +1,5 @@
 import { Router } from "express";
+import sql from "mssql";
 import { getPool } from "../db";
 import { v4 as uuidv4 } from "uuid";
 
@@ -15,10 +16,10 @@ router.post("/", async (req, res) => {
     const id = uuidv4();
     await pool
       .request()
-      .input("id", id)
-      .input("username", username)
-      .input("email", email)
-      .input("password_hash", password_hash)
+      .input("id",            sql.UniqueIdentifier, id)
+      .input("username",      sql.NVarChar(255),    username)
+      .input("email",         sql.NVarChar(255),    email)
+      .input("password_hash", sql.NVarChar(255),    password_hash)
       .query(
         "INSERT INTO dbo.users (id, username, email, password_hash) VALUES (@id, @username, @email, @password_hash)"
       );
@@ -35,7 +36,7 @@ router.get("/:id", async (req, res) => {
     const pool = await getPool();
     const result = await pool
       .request()
-      .input("id", req.params.id)
+      .input("id", sql.UniqueIdentifier, req.params.id)
       .query("SELECT id, username, email, created_at, updated_at FROM dbo.users WHERE id = @id");
     if (result.recordset.length === 0) return res.status(404).end();
     res.json(result.recordset[0]);
