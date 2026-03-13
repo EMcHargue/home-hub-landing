@@ -744,7 +744,7 @@ const Pantry = () => {
                 </h3>
                 <div className="grid gap-3">
                   {expiringItems.map((item) => (
-                    <Card key={item.id} className="border-accent/30">
+                    <Card key={item.id} className="border-accent/15 shadow-[var(--card-shadow)]">
                       <CardContent className="py-4 flex items-center justify-between gap-4">
                         <div>
                           <div className="flex items-center gap-2">
