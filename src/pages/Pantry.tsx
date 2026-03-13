@@ -439,7 +439,7 @@ const Pantry = () => {
           {/* Add Item dialog */}
           <Dialog open={addOpen} onOpenChange={setAddOpen}>
             <DialogTrigger asChild>
-              <Button onClick={() => openAddDialog()}><Plus className="h-4 w-4 mr-2" />Add Item</Button>
+              <Button onClick={() => openAddDialog()} className="bg-accent hover:bg-accent/90 text-accent-foreground shadow-md"><Plus className="h-4 w-4 mr-2" />Add Item</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader><DialogTitle>Add Pantry Item</DialogTitle></DialogHeader>
