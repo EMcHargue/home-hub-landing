@@ -703,7 +703,7 @@ const Pantry = () => {
             </div>
             {lowStockItems.length === 0 ? (
               <Card><CardContent className="py-12 text-center text-muted-foreground flex flex-col items-center gap-2">
-                <ChefHat className="h-10 w-10 text-primary" />
+                <ChefHat className="h-10 w-10 text-accent" />
                 <p className="font-medium text-foreground">All stocked up!</p>
                 <p>Your pantry is in great shape.</p>
               </CardContent></Card>
