@@ -424,14 +424,14 @@ const Pantry = () => {
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-background font-sans">
+    <div className="min-h-screen bg-secondary/40 font-sans">
       {/* Header */}
-      <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-30">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link to="/"><Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button></Link>
+      <header className="border-b border-primary/10 bg-primary/5 backdrop-blur-sm sticky top-0 z-30">
+        <div className="container mx-auto px-4 py-5 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Link to="/"><Button variant="ghost" size="icon" className="rounded-full hover:bg-primary/10"><ArrowLeft className="h-5 w-5 text-primary" /></Button></Link>
             <div>
-              <h1 className="text-xl font-display font-bold text-foreground">Pantry</h1>
+              <h1 className="text-2xl font-display font-bold text-primary">Pantry</h1>
               <p className="text-sm text-muted-foreground">Manage your household inventory</p>
             </div>
           </div>
