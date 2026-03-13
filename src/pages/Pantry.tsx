@@ -649,7 +649,7 @@ const Pantry = () => {
 
                       {/* Lot rows */}
                       <CollapsibleContent>
-                        <div className="border-t divide-y bg-muted/20">
+                        <div className="border-t border-primary/5 divide-y divide-primary/5 bg-secondary/30">
                           {dg.entries.length === 0 && (
                             <p className="pl-11 pr-4 py-3 text-sm text-muted-foreground italic">No items in this group yet.</p>
                           )}
