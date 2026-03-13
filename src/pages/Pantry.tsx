@@ -424,14 +424,14 @@ const Pantry = () => {
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-background font-sans">
+    <div className="min-h-screen bg-secondary/40 font-sans">
       {/* Header */}
-      <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-30">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link to="/"><Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button></Link>
+      <header className="border-b border-primary/10 bg-primary/5 backdrop-blur-sm sticky top-0 z-30">
+        <div className="container mx-auto px-4 py-5 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Link to="/"><Button variant="ghost" size="icon" className="rounded-full hover:bg-primary/10"><ArrowLeft className="h-5 w-5 text-primary" /></Button></Link>
             <div>
-              <h1 className="text-xl font-display font-bold text-foreground">Pantry</h1>
+              <h1 className="text-2xl font-display font-bold text-primary">Pantry</h1>
               <p className="text-sm text-muted-foreground">Manage your household inventory</p>
             </div>
           </div>
@@ -439,7 +439,7 @@ const Pantry = () => {
           {/* Add Item dialog */}
           <Dialog open={addOpen} onOpenChange={setAddOpen}>
             <DialogTrigger asChild>
-              <Button onClick={() => openAddDialog()}><Plus className="h-4 w-4 mr-2" />Add Item</Button>
+              <Button onClick={() => openAddDialog()} className="bg-accent hover:bg-accent/90 text-accent-foreground shadow-md"><Plus className="h-4 w-4 mr-2" />Add Item</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader><DialogTitle>Add Pantry Item</DialogTitle></DialogHeader>
@@ -542,22 +542,22 @@ const Pantry = () => {
       <main className="container mx-auto px-4 py-8 space-y-8">
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card><CardContent className="pt-6 flex items-center gap-4">
-            <div className="rounded-lg bg-primary/10 p-3"><Package className="h-5 w-5 text-primary" /></div>
-            <div><p className="text-sm text-muted-foreground">Total Items</p><p className="text-2xl font-bold text-foreground">{totalItems}</p></div>
+          <Card className="border-primary/15 bg-card shadow-[var(--card-shadow)] hover:shadow-[var(--card-hover-shadow)] transition-shadow"><CardContent className="pt-6 flex items-center gap-4">
+            <div className="rounded-full bg-primary/15 p-3"><Package className="h-5 w-5 text-primary" /></div>
+            <div><p className="text-sm text-muted-foreground">Total Items</p><p className="text-2xl font-display font-bold text-foreground">{totalItems}</p></div>
           </CardContent></Card>
-          <Card><CardContent className="pt-6 flex items-center gap-4">
-            <div className="rounded-lg bg-destructive/10 p-3"><TrendingDown className="h-5 w-5 text-destructive" /></div>
-            <div><p className="text-sm text-muted-foreground">Low Stock</p><p className="text-2xl font-bold text-foreground">{lowStockItems.length}</p></div>
+          <Card className="border-destructive/15 bg-card shadow-[var(--card-shadow)] hover:shadow-[var(--card-hover-shadow)] transition-shadow"><CardContent className="pt-6 flex items-center gap-4">
+            <div className="rounded-full bg-destructive/10 p-3"><TrendingDown className="h-5 w-5 text-destructive" /></div>
+            <div><p className="text-sm text-muted-foreground">Low Stock</p><p className="text-2xl font-display font-bold text-foreground">{lowStockItems.length}</p></div>
           </CardContent></Card>
-          <Card><CardContent className="pt-6 flex items-center gap-4">
-            <div className="rounded-lg bg-accent/10 p-3"><AlertTriangle className="h-5 w-5 text-accent" /></div>
-            <div><p className="text-sm text-muted-foreground">Expiring Soon</p><p className="text-2xl font-bold text-foreground">{expiringItems.length}</p></div>
+          <Card className="border-accent/20 bg-card shadow-[var(--card-shadow)] hover:shadow-[var(--card-hover-shadow)] transition-shadow"><CardContent className="pt-6 flex items-center gap-4">
+            <div className="rounded-full bg-accent/15 p-3"><AlertTriangle className="h-5 w-5 text-accent" /></div>
+            <div><p className="text-sm text-muted-foreground">Expiring Soon</p><p className="text-2xl font-display font-bold text-foreground">{expiringItems.length}</p></div>
           </CardContent></Card>
-          <Card><CardContent className="pt-6 space-y-2">
+          <Card className="border-primary/15 bg-card shadow-[var(--card-shadow)] hover:shadow-[var(--card-hover-shadow)] transition-shadow"><CardContent className="pt-6 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Stock Health</span>
-              <span className="font-semibold text-foreground">{stockHealth}%</span>
+              <span className="font-display font-semibold text-primary">{stockHealth}%</span>
             </div>
             <Progress value={stockHealth} className="h-2" />
           </CardContent></Card>
@@ -599,7 +599,7 @@ const Pantry = () => {
                 const isOpen = openGroups.has(dg.id);
                 return (
                   <Collapsible key={dg.id} open={isOpen} onOpenChange={() => toggleGroup(dg.id)}>
-                    <Card className="overflow-hidden transition-shadow hover:shadow-md">
+                    <Card className="overflow-hidden transition-shadow shadow-[var(--card-shadow)] hover:shadow-[var(--card-hover-shadow)] border-primary/10">
                       {/* Group / item header */}
                       <CollapsibleTrigger asChild>
                         <div className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none">
@@ -649,7 +649,7 @@ const Pantry = () => {
 
                       {/* Lot rows */}
                       <CollapsibleContent>
-                        <div className="border-t divide-y bg-muted/20">
+                        <div className="border-t border-primary/5 divide-y divide-primary/5 bg-secondary/30">
                           {dg.entries.length === 0 && (
                             <p className="pl-11 pr-4 py-3 text-sm text-muted-foreground italic">No items in this group yet.</p>
                           )}
@@ -703,18 +703,18 @@ const Pantry = () => {
             </div>
             {lowStockItems.length === 0 ? (
               <Card><CardContent className="py-12 text-center text-muted-foreground flex flex-col items-center gap-2">
-                <ChefHat className="h-10 w-10 text-primary" />
+                <ChefHat className="h-10 w-10 text-accent" />
                 <p className="font-medium text-foreground">All stocked up!</p>
                 <p>Your pantry is in great shape.</p>
               </CardContent></Card>
             ) : (
               <div className="grid gap-3">
                 {lowStockItems.map((item) => (
-                  <Card key={item.id} className="border-destructive/30">
+                  <Card key={item.id} className="border-accent/20 shadow-[var(--card-shadow)]">
                     <CardContent className="py-4 flex items-center justify-between gap-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <AlertTriangle className="h-4 w-4 text-destructive" />
+                          <AlertTriangle className="h-4 w-4 text-accent" />
                           <span className="font-semibold text-foreground">{item.name}</span>
                           {item.brand && <span className="text-sm text-muted-foreground">{item.brand}</span>}
                           <Badge variant="secondary" className="text-xs">{item.category}</Badge>
@@ -744,7 +744,7 @@ const Pantry = () => {
                 </h3>
                 <div className="grid gap-3">
                   {expiringItems.map((item) => (
-                    <Card key={item.id} className="border-accent/30">
+                    <Card key={item.id} className="border-accent/15 shadow-[var(--card-shadow)]">
                       <CardContent className="py-4 flex items-center justify-between gap-4">
                         <div>
                           <div className="flex items-center gap-2">
