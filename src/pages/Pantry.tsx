@@ -542,22 +542,22 @@ const Pantry = () => {
       <main className="container mx-auto px-4 py-8 space-y-8">
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card><CardContent className="pt-6 flex items-center gap-4">
-            <div className="rounded-lg bg-primary/10 p-3"><Package className="h-5 w-5 text-primary" /></div>
-            <div><p className="text-sm text-muted-foreground">Total Items</p><p className="text-2xl font-bold text-foreground">{totalItems}</p></div>
+          <Card className="border-primary/15 bg-card shadow-[var(--card-shadow)] hover:shadow-[var(--card-hover-shadow)] transition-shadow"><CardContent className="pt-6 flex items-center gap-4">
+            <div className="rounded-full bg-primary/15 p-3"><Package className="h-5 w-5 text-primary" /></div>
+            <div><p className="text-sm text-muted-foreground">Total Items</p><p className="text-2xl font-display font-bold text-foreground">{totalItems}</p></div>
           </CardContent></Card>
-          <Card><CardContent className="pt-6 flex items-center gap-4">
-            <div className="rounded-lg bg-destructive/10 p-3"><TrendingDown className="h-5 w-5 text-destructive" /></div>
-            <div><p className="text-sm text-muted-foreground">Low Stock</p><p className="text-2xl font-bold text-foreground">{lowStockItems.length}</p></div>
+          <Card className="border-destructive/15 bg-card shadow-[var(--card-shadow)] hover:shadow-[var(--card-hover-shadow)] transition-shadow"><CardContent className="pt-6 flex items-center gap-4">
+            <div className="rounded-full bg-destructive/10 p-3"><TrendingDown className="h-5 w-5 text-destructive" /></div>
+            <div><p className="text-sm text-muted-foreground">Low Stock</p><p className="text-2xl font-display font-bold text-foreground">{lowStockItems.length}</p></div>
           </CardContent></Card>
-          <Card><CardContent className="pt-6 flex items-center gap-4">
-            <div className="rounded-lg bg-accent/10 p-3"><AlertTriangle className="h-5 w-5 text-accent" /></div>
-            <div><p className="text-sm text-muted-foreground">Expiring Soon</p><p className="text-2xl font-bold text-foreground">{expiringItems.length}</p></div>
+          <Card className="border-accent/20 bg-card shadow-[var(--card-shadow)] hover:shadow-[var(--card-hover-shadow)] transition-shadow"><CardContent className="pt-6 flex items-center gap-4">
+            <div className="rounded-full bg-accent/15 p-3"><AlertTriangle className="h-5 w-5 text-accent" /></div>
+            <div><p className="text-sm text-muted-foreground">Expiring Soon</p><p className="text-2xl font-display font-bold text-foreground">{expiringItems.length}</p></div>
           </CardContent></Card>
-          <Card><CardContent className="pt-6 space-y-2">
+          <Card className="border-primary/15 bg-card shadow-[var(--card-shadow)] hover:shadow-[var(--card-hover-shadow)] transition-shadow"><CardContent className="pt-6 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Stock Health</span>
-              <span className="font-semibold text-foreground">{stockHealth}%</span>
+              <span className="font-display font-semibold text-primary">{stockHealth}%</span>
             </div>
             <Progress value={stockHealth} className="h-2" />
           </CardContent></Card>
