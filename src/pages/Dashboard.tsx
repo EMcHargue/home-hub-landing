@@ -60,6 +60,8 @@ const sections = [
 ];
 
 const Dashboard = () => {
+  const { currentUser, logout } = useAuth();
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -69,6 +71,16 @@ const Dashboard = () => {
             <Home className="h-5 w-5" />
             <span className="font-serif text-xl font-bold tracking-tight">HomeBase</span>
           </Link>
+          <div className="flex items-center gap-3">
+            {currentUser && (
+              <span className="text-sm text-muted-foreground">
+                Hi, <span className="font-medium text-foreground">{currentUser.name}</span>
+              </span>
+            )}
+            <Button variant="ghost" size="sm" className="gap-1.5" onClick={logout}>
+              <LogOut className="h-4 w-4" /> Sign Out
+            </Button>
+          </div>
         </div>
       </header>
 

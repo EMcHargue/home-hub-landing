@@ -691,6 +691,7 @@ const Chores = () => {
                               <p className="text-xs text-muted-foreground">
                                 {assignedCount} active chore
                                 {assignedCount !== 1 ? "s" : ""}
+                                {m.pin ? " · 🔒 PIN set" : ""}
                               </p>
                             </div>
                           </div>
