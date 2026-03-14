@@ -13,11 +13,10 @@ type HouseholdMember = { id: string; name: string; pin?: string };
 const MEMBERS_KEY = "homebase_members";
 
 function loadMembers(): HouseholdMember[] {
-  try {
-    return JSON.parse(localStorage.getItem(MEMBERS_KEY) || "[]");
-  } catch {
-    return [];
-  }
+  try { return JSON.parse(localStorage.getItem(MEMBERS_KEY) || "[]"); } catch { return []; }
+}
+function saveMembers(members: HouseholdMember[]) {
+  localStorage.setItem(MEMBERS_KEY, JSON.stringify(members));
 }
 
 const Login = () => {
