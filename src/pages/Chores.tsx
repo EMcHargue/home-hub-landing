@@ -100,30 +100,6 @@ const Chores = () => {
   useEffect(() => saveChores(chores), [chores]);
   useEffect(() => saveMembers(members), [members]);
 
-  // ── Members CRUD ────────────────────────────────────────────────────────────
-
-  const addMember = () => {
-    const name = newMemberName.trim();
-    if (!name) return;
-    if (members.some((m) => m.name.toLowerCase() === name.toLowerCase())) {
-      toast({ title: "Member already exists", variant: "destructive" });
-      return;
-    }
-    const pinVal = newMemberPin.trim();
-    setMembers((prev) => [...prev, { id: crypto.randomUUID(), name, pin: pinVal || undefined }]);
-    setNewMemberName("");
-    setNewMemberPin("");
-    toast({ title: `${name} added to household` });
-  };
-
-  const removeMember = (id: string) => {
-    setMembers((prev) => prev.filter((m) => m.id !== id));
-    // Unassign chores from removed member
-    setChores((prev) =>
-      prev.map((c) => (c.assigneeId === id ? { ...c, assigneeId: null } : c))
-    );
-  };
-
   // ── Chores CRUD ─────────────────────────────────────────────────────────────
 
   const addChore = () => {
