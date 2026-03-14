@@ -43,6 +43,7 @@ type Chore = {
 type HouseholdMember = {
   id: string;
   name: string;
+  pin?: string;
 };
 
 // ── Persistence helpers ───────────────────────────────────────────────────────
@@ -96,6 +97,7 @@ const Chores = () => {
   const [memberOpen, setMemberOpen] = useState(false);
   const [form, setForm] = useState(BLANK_CHORE);
   const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberPin, setNewMemberPin] = useState("");
 
   // Persist on change
   useEffect(() => saveChores(chores), [chores]);
@@ -110,8 +112,10 @@ const Chores = () => {
       toast({ title: "Member already exists", variant: "destructive" });
       return;
     }
-    setMembers((prev) => [...prev, { id: crypto.randomUUID(), name }]);
+    const pinVal = newMemberPin.trim();
+    setMembers((prev) => [...prev, { id: crypto.randomUUID(), name, pin: pinVal || undefined }]);
     setNewMemberName("");
+    setNewMemberPin("");
     toast({ title: `${name} added to household` });
   };
 
@@ -644,6 +648,17 @@ const Chores = () => {
                     value={newMemberName}
                     onChange={(e) => setNewMemberName(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && addMember()}
+                    className="flex-1"
+                  />
+                  <Input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="PIN (optional)"
+                    value={newMemberPin}
+                    onChange={(e) => setNewMemberPin(e.target.value.replace(/\D/g, ""))}
+                    onKeyDown={(e) => e.key === "Enter" && addMember()}
+                    className="w-28"
                   />
                   <Button onClick={addMember} size="sm" className="gap-1.5 shrink-0">
                     <UserPlus className="h-4 w-4" /> Add
@@ -676,6 +691,7 @@ const Chores = () => {
                               <p className="text-xs text-muted-foreground">
                                 {assignedCount} active chore
                                 {assignedCount !== 1 ? "s" : ""}
+                                {m.pin ? " · 🔒 PIN set" : ""}
                               </p>
                             </div>
                           </div>
