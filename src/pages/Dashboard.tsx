@@ -1,6 +1,8 @@
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   ShoppingBasket,
   Wrench,
@@ -11,8 +13,23 @@ import {
   Home,
   ListChecks,
   LogOut,
+  UserPlus,
+  Trash2,
+  Users,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+
+type HouseholdMember = { id: string; name: string; pin?: string };
+
+const MEMBERS_KEY = "homebase_members";
+
+function loadMembers(): HouseholdMember[] {
+  try { return JSON.parse(localStorage.getItem(MEMBERS_KEY) || "[]"); } catch { return []; }
+}
+function saveMembers(members: HouseholdMember[]) {
+  localStorage.setItem(MEMBERS_KEY, JSON.stringify(members));
+}
 
 const sections = [
   {
@@ -61,6 +78,31 @@ const sections = [
 
 const Dashboard = () => {
   const { currentUser, logout } = useAuth();
+  const { toast } = useToast();
+
+  const [members, setMembers] = useState<HouseholdMember[]>(loadMembers);
+  const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberPin, setNewMemberPin] = useState("");
+
+  useEffect(() => saveMembers(members), [members]);
+
+  const addMember = () => {
+    const name = newMemberName.trim();
+    if (!name) return;
+    if (members.some((m) => m.name.toLowerCase() === name.toLowerCase())) {
+      toast({ title: "Member already exists", variant: "destructive" });
+      return;
+    }
+    const pinVal = newMemberPin.trim();
+    setMembers((prev) => [...prev, { id: crypto.randomUUID(), name, pin: pinVal || undefined }]);
+    setNewMemberName("");
+    setNewMemberPin("");
+    toast({ title: `${name} added to household` });
+  };
+
+  const removeMember = (id: string) => {
+    setMembers((prev) => prev.filter((m) => m.id !== id));
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -85,8 +127,8 @@ const Dashboard = () => {
       </header>
 
       {/* Content */}
-      <main className="container mx-auto px-6 py-10">
-        <div className="mb-8">
+      <main className="container mx-auto px-6 py-10 space-y-10">
+        <div>
           <h1 className="font-serif text-3xl font-bold text-foreground">Dashboard</h1>
           <p className="mt-1 text-muted-foreground">
             Manage every aspect of your home from one place.
@@ -122,6 +164,78 @@ const Dashboard = () => {
             </Card>
           ))}
         </div>
+
+        {/* Household Members */}
+        <Card className="shadow-[var(--card-shadow)]">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" />
+              <CardTitle className="text-lg">Household Members</CardTitle>
+            </div>
+            <CardDescription>
+              Add people in your household so you can assign chores and log in.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Member name"
+                value={newMemberName}
+                onChange={(e) => setNewMemberName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addMember()}
+                className="flex-1"
+              />
+              <Input
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="PIN (optional)"
+                value={newMemberPin}
+                onChange={(e) => setNewMemberPin(e.target.value.replace(/\D/g, ""))}
+                onKeyDown={(e) => e.key === "Enter" && addMember()}
+                className="w-28"
+              />
+              <Button onClick={addMember} size="sm" className="gap-1.5 shrink-0">
+                <UserPlus className="h-4 w-4" /> Add
+              </Button>
+            </div>
+
+            {members.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                No members yet — add someone above.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {members.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                        {m.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground">{m.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {m.pin ? "🔒 PIN set" : "No PIN"}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() => removeMember(m.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </main>
     </div>
   );

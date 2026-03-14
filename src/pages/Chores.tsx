@@ -19,7 +19,7 @@ import {
   Clock,
   CalendarDays,
   RotateCcw,
-  UserPlus,
+  
   ListChecks,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -94,38 +94,11 @@ const Chores = () => {
 
   // Dialogs
   const [choreOpen, setChoreOpen] = useState(false);
-  const [memberOpen, setMemberOpen] = useState(false);
   const [form, setForm] = useState(BLANK_CHORE);
-  const [newMemberName, setNewMemberName] = useState("");
-  const [newMemberPin, setNewMemberPin] = useState("");
 
   // Persist on change
   useEffect(() => saveChores(chores), [chores]);
   useEffect(() => saveMembers(members), [members]);
-
-  // ── Members CRUD ────────────────────────────────────────────────────────────
-
-  const addMember = () => {
-    const name = newMemberName.trim();
-    if (!name) return;
-    if (members.some((m) => m.name.toLowerCase() === name.toLowerCase())) {
-      toast({ title: "Member already exists", variant: "destructive" });
-      return;
-    }
-    const pinVal = newMemberPin.trim();
-    setMembers((prev) => [...prev, { id: crypto.randomUUID(), name, pin: pinVal || undefined }]);
-    setNewMemberName("");
-    setNewMemberPin("");
-    toast({ title: `${name} added to household` });
-  };
-
-  const removeMember = (id: string) => {
-    setMembers((prev) => prev.filter((m) => m.id !== id));
-    // Unassign chores from removed member
-    setChores((prev) =>
-      prev.map((c) => (c.assigneeId === id ? { ...c, assigneeId: null } : c))
-    );
-  };
 
   // ── Chores CRUD ─────────────────────────────────────────────────────────────
 
@@ -352,10 +325,6 @@ const Chores = () => {
             <TabsList>
               <TabsTrigger value="active">Active</TabsTrigger>
               <TabsTrigger value="completed">Completed</TabsTrigger>
-              <TabsTrigger value="members">
-                <Users className="mr-1.5 h-4 w-4" />
-                Household
-              </TabsTrigger>
             </TabsList>
 
             <div className="flex gap-2">
@@ -632,85 +601,6 @@ const Chores = () => {
             )}
           </TabsContent>
 
-          {/* ── Household tab ──────────────────────────────────────────────── */}
-          <TabsContent value="members" className="space-y-6">
-            <Card className="shadow-[var(--card-shadow)]">
-              <CardHeader>
-                <CardTitle className="text-lg">Household Members</CardTitle>
-                <CardDescription>
-                  Add people in your household so you can assign chores to them.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Member name"
-                    value={newMemberName}
-                    onChange={(e) => setNewMemberName(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && addMember()}
-                    className="flex-1"
-                  />
-                  <Input
-                    type="password"
-                    inputMode="numeric"
-                    maxLength={6}
-                    placeholder="PIN (optional)"
-                    value={newMemberPin}
-                    onChange={(e) => setNewMemberPin(e.target.value.replace(/\D/g, ""))}
-                    onKeyDown={(e) => e.key === "Enter" && addMember()}
-                    className="w-28"
-                  />
-                  <Button onClick={addMember} size="sm" className="gap-1.5 shrink-0">
-                    <UserPlus className="h-4 w-4" /> Add
-                  </Button>
-                </div>
-
-                {members.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-4 text-center">
-                    No members yet — add someone above.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {members.map((m) => {
-                      const assignedCount = chores.filter(
-                        (c) => !c.completed && c.assigneeId === m.id
-                      ).length;
-                      return (
-                        <div
-                          key={m.id}
-                          className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                              {m.name.charAt(0).toUpperCase()}
-                            </div>
-                            <div>
-                              <p className="font-medium text-foreground">
-                                {m.name}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {assignedCount} active chore
-                                {assignedCount !== 1 ? "s" : ""}
-                                {m.pin ? " · 🔒 PIN set" : ""}
-                              </p>
-                            </div>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-muted-foreground hover:text-destructive"
-                            onClick={() => removeMember(m.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
         </Tabs>
       </main>
     </div>
