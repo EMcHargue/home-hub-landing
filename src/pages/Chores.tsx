@@ -648,6 +648,17 @@ const Chores = () => {
                     value={newMemberName}
                     onChange={(e) => setNewMemberName(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && addMember()}
+                    className="flex-1"
+                  />
+                  <Input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="PIN (optional)"
+                    value={newMemberPin}
+                    onChange={(e) => setNewMemberPin(e.target.value.replace(/\D/g, ""))}
+                    onKeyDown={(e) => e.key === "Enter" && addMember()}
+                    className="w-28"
                   />
                   <Button onClick={addMember} size="sm" className="gap-1.5 shrink-0">
                     <UserPlus className="h-4 w-4" /> Add
