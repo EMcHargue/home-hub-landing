@@ -112,8 +112,10 @@ const Chores = () => {
       toast({ title: "Member already exists", variant: "destructive" });
       return;
     }
-    setMembers((prev) => [...prev, { id: crypto.randomUUID(), name }]);
+    const pinVal = newMemberPin.trim();
+    setMembers((prev) => [...prev, { id: crypto.randomUUID(), name, pin: pinVal || undefined }]);
     setNewMemberName("");
+    setNewMemberPin("");
     toast({ title: `${name} added to household` });
   };
 
