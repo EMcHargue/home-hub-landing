@@ -43,6 +43,7 @@ type Chore = {
 type HouseholdMember = {
   id: string;
   name: string;
+  pin?: string;
 };
 
 // ── Persistence helpers ───────────────────────────────────────────────────────
