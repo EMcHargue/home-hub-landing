@@ -19,7 +19,7 @@ import {
   Clock,
   CalendarDays,
   RotateCcw,
-  UserPlus,
+  
   ListChecks,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
