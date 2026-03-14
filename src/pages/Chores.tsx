@@ -94,10 +94,7 @@ const Chores = () => {
 
   // Dialogs
   const [choreOpen, setChoreOpen] = useState(false);
-  const [memberOpen, setMemberOpen] = useState(false);
   const [form, setForm] = useState(BLANK_CHORE);
-  const [newMemberName, setNewMemberName] = useState("");
-  const [newMemberPin, setNewMemberPin] = useState("");
 
   // Persist on change
   useEffect(() => saveChores(chores), [chores]);
