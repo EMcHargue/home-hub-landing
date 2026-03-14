@@ -352,10 +352,6 @@ const Chores = () => {
             <TabsList>
               <TabsTrigger value="active">Active</TabsTrigger>
               <TabsTrigger value="completed">Completed</TabsTrigger>
-              <TabsTrigger value="members">
-                <Users className="mr-1.5 h-4 w-4" />
-                Household
-              </TabsTrigger>
             </TabsList>
 
             <div className="flex gap-2">
