@@ -52,6 +52,22 @@ const Login = () => {
     }
   };
 
+  const [setupName, setSetupName] = useState("");
+  const [setupPin, setSetupPin] = useState("");
+
+  const handleSetup = () => {
+    const name = setupName.trim();
+    if (!name) return;
+    const pinVal = setupPin.trim();
+    const newMember: HouseholdMember = { id: crypto.randomUUID(), name, pin: pinVal || undefined };
+    const updated = [...members, newMember];
+    setMembers(updated);
+    saveMembers(updated);
+    setSetupName("");
+    setSetupPin("");
+    toast({ title: `${name} added! You can now sign in.` });
+  };
+
   if (members.length === 0) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -62,12 +78,35 @@ const Login = () => {
             </div>
             <CardTitle className="font-serif text-2xl">HomeBase</CardTitle>
             <CardDescription>
-              No household members found. Head to the Chores page first to add members.
+              Welcome! Create your first household member to get started.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Button className="w-full" onClick={() => navigate("/chores")}>
-              Go to Chores
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Your name</Label>
+              <Input
+                placeholder="e.g. Alex"
+                value={setupName}
+                onChange={(e) => setSetupName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSetup()}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5">
+                <Lock className="h-3.5 w-3.5" /> PIN (optional)
+              </Label>
+              <Input
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="Set a numeric PIN"
+                value={setupPin}
+                onChange={(e) => setSetupPin(e.target.value.replace(/\D/g, ""))}
+                onKeyDown={(e) => e.key === "Enter" && handleSetup()}
+              />
+            </div>
+            <Button className="w-full gap-1.5" onClick={handleSetup} disabled={!setupName.trim()}>
+              <UserPlus className="h-4 w-4" /> Create & Continue
             </Button>
           </CardContent>
         </Card>
