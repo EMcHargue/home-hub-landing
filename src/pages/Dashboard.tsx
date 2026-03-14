@@ -10,7 +10,9 @@ import {
   ArrowRight,
   Home,
   ListChecks,
+  LogOut,
 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 const sections = [
   {
