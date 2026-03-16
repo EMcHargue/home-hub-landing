@@ -17,6 +17,7 @@ import {
   UserPlus,
   Trash2,
   Users,
+  UtensilsCrossed,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
