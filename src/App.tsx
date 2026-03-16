@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard.tsx";
 import Login from "./pages/Login.tsx";
 import Pantry from "./pages/Pantry.tsx";
 import Chores from "./pages/Chores.tsx";
+import MealPlanning from "./pages/MealPlanning.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
