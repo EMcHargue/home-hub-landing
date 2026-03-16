@@ -22,9 +22,10 @@ const Login = () => {
     if (isAuthenticated) navigate("/dashboard", { replace: true });
   }, [isAuthenticated, navigate]);
 
-  const { data: members = [], isLoading, refetch } = useQuery<ApiMember[]>({
+  const { data: members = [], isLoading, isError, refetch } = useQuery<ApiMember[]>({
     queryKey: ["members"],
     queryFn: () => api.getMembers(),
+    retry: 1,
   });
 
   const selectedMember = members.find((m) => m.id === selectedId);
