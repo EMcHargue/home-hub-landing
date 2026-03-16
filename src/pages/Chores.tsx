@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ import {
   ListChecks,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { api, ApiMember } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -40,16 +42,9 @@ type Chore = {
   recurrence: RecurrenceFrequency;
 };
 
-type HouseholdMember = {
-  id: string;
-  name: string;
-  pin?: string;
-};
-
 // ── Persistence helpers ───────────────────────────────────────────────────────
 
 const CHORES_KEY = "homebase_chores";
-const MEMBERS_KEY = "homebase_members";
 
 function loadChores(): Chore[] {
   try {
@@ -60,16 +55,6 @@ function loadChores(): Chore[] {
 }
 function saveChores(chores: Chore[]) {
   localStorage.setItem(CHORES_KEY, JSON.stringify(chores));
-}
-function loadMembers(): HouseholdMember[] {
-  try {
-    return JSON.parse(localStorage.getItem(MEMBERS_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-function saveMembers(members: HouseholdMember[]) {
-  localStorage.setItem(MEMBERS_KEY, JSON.stringify(members));
 }
 
 // ── Blank form ────────────────────────────────────────────────────────────────
@@ -88,7 +73,10 @@ const Chores = () => {
   const { toast } = useToast();
 
   const [chores, setChores] = useState<Chore[]>(loadChores);
-  const [members, setMembers] = useState<HouseholdMember[]>(loadMembers);
+  const { data: members = [] } = useQuery<ApiMember[]>({
+    queryKey: ["members"],
+    queryFn: () => api.getMembers(),
+  });
   const [search, setSearch] = useState("");
   const [filterAssignee, setFilterAssignee] = useState("all");
 
@@ -98,7 +86,6 @@ const Chores = () => {
 
   // Persist on change
   useEffect(() => saveChores(chores), [chores]);
-  useEffect(() => saveMembers(members), [members]);
 
   // ── Chores CRUD ─────────────────────────────────────────────────────────────
 

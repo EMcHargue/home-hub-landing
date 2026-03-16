@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,22 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Home, Lock, LogIn, UserPlus } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-
-type HouseholdMember = { id: string; name: string; pin?: string };
-const MEMBERS_KEY = "homebase_members";
-
-function loadMembers(): HouseholdMember[] {
-  try { return JSON.parse(localStorage.getItem(MEMBERS_KEY) || "[]"); } catch { return []; }
-}
-function saveMembers(members: HouseholdMember[]) {
-  localStorage.setItem(MEMBERS_KEY, JSON.stringify(members));
-}
+import { api, ApiMember } from "@/lib/api";
 
 const Login = () => {
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [members, setMembers] = useState<HouseholdMember[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [pin, setPin] = useState("");
 
@@ -31,42 +22,61 @@ const Login = () => {
     if (isAuthenticated) navigate("/dashboard", { replace: true });
   }, [isAuthenticated, navigate]);
 
-  useEffect(() => {
-    setMembers(loadMembers());
-  }, []);
+  const { data: members = [], isLoading, refetch } = useQuery<ApiMember[]>({
+    queryKey: ["members"],
+    queryFn: () => api.getMembers(),
+  });
 
   const selectedMember = members.find((m) => m.id === selectedId);
   const needsPin = selectedMember?.pin && selectedMember.pin.length > 0;
 
   const handleLogin = () => {
-    if (!selectedId) {
+    if (!selectedId || !selectedMember) {
       toast({ title: "Please select a household member", variant: "destructive" });
       return;
     }
-    const success = login(selectedId, pin);
-    if (success) {
-      navigate("/dashboard", { replace: true });
-    } else {
+    if (selectedMember.pin && selectedMember.pin !== pin) {
       toast({ title: "Incorrect PIN", variant: "destructive" });
       setPin("");
+      return;
     }
+    if (!selectedMember.pin && pin !== "") {
+      toast({ title: "Incorrect PIN", variant: "destructive" });
+      setPin("");
+      return;
+    }
+    login(selectedMember);
+    navigate("/dashboard", { replace: true });
   };
 
   const [setupName, setSetupName] = useState("");
   const [setupPin, setSetupPin] = useState("");
+  const [setupLoading, setSetupLoading] = useState(false);
 
-  const handleSetup = () => {
+  const handleSetup = async () => {
     const name = setupName.trim();
     if (!name) return;
-    const pinVal = setupPin.trim();
-    const newMember: HouseholdMember = { id: crypto.randomUUID(), name, pin: pinVal || undefined };
-    const updated = [...members, newMember];
-    setMembers(updated);
-    saveMembers(updated);
-    setSetupName("");
-    setSetupPin("");
-    toast({ title: `${name} added! You can now sign in.` });
+    setSetupLoading(true);
+    try {
+      const member = await api.createMember(name, setupPin.trim() || undefined);
+      await refetch();
+      setSetupName("");
+      setSetupPin("");
+      toast({ title: `${member.name} added! You can now sign in.` });
+    } catch {
+      toast({ title: "Failed to create member", variant: "destructive" });
+    } finally {
+      setSetupLoading(false);
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-muted-foreground">Loading…</p>
+      </div>
+    );
+  }
 
   if (members.length === 0) {
     return (
@@ -105,7 +115,11 @@ const Login = () => {
                 onKeyDown={(e) => e.key === "Enter" && handleSetup()}
               />
             </div>
-            <Button className="w-full gap-1.5" onClick={handleSetup} disabled={!setupName.trim()}>
+            <Button
+              className="w-full gap-1.5"
+              onClick={handleSetup}
+              disabled={!setupName.trim() || setupLoading}
+            >
               <UserPlus className="h-4 w-4" /> Create & Continue
             </Button>
           </CardContent>

@@ -8,16 +8,13 @@ function errMsg(err: unknown) {
   return err instanceof Error ? err.message : String(err);
 }
 
-// GET /api/pantry-groups?user_id=...
-router.get("/", async (req, res) => {
-  const { user_id } = req.query;
-  if (!user_id) return res.status(400).json({ error: "user_id required" });
+// GET /api/pantry-groups
+router.get("/", async (_req, res) => {
   try {
     const pool = await getPool();
     const result = await pool
       .request()
-      .input("user_id", sql.UniqueIdentifier, user_id as string)
-      .query("SELECT * FROM dbo.pantry_groups WHERE user_id = @user_id ORDER BY name");
+      .query("SELECT * FROM dbo.pantry_groups ORDER BY name");
     res.json(result.recordset);
   } catch (err) {
     console.error(err);

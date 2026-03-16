@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,17 +20,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-
-type HouseholdMember = { id: string; name: string; pin?: string };
-
-const MEMBERS_KEY = "homebase_members";
-
-function loadMembers(): HouseholdMember[] {
-  try { return JSON.parse(localStorage.getItem(MEMBERS_KEY) || "[]"); } catch { return []; }
-}
-function saveMembers(members: HouseholdMember[]) {
-  localStorage.setItem(MEMBERS_KEY, JSON.stringify(members));
-}
+import { api, ApiMember } from "@/lib/api";
 
 const sections = [
   {
@@ -79,12 +70,33 @@ const sections = [
 const Dashboard = () => {
   const { currentUser, logout } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const [members, setMembers] = useState<HouseholdMember[]>(loadMembers);
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberPin, setNewMemberPin] = useState("");
 
-  useEffect(() => saveMembers(members), [members]);
+  const { data: members = [] } = useQuery<ApiMember[]>({
+    queryKey: ["members"],
+    queryFn: () => api.getMembers(),
+  });
+
+  const createMember = useMutation({
+    mutationFn: ({ name, pin }: { name: string; pin?: string }) =>
+      api.createMember(name, pin),
+    onSuccess: (member) => {
+      queryClient.invalidateQueries({ queryKey: ["members"] });
+      toast({ title: `${member.name} added to household` });
+      setNewMemberName("");
+      setNewMemberPin("");
+    },
+    onError: () => toast({ title: "Failed to add member", variant: "destructive" }),
+  });
+
+  const deleteMember = useMutation({
+    mutationFn: (id: string) => api.deleteMember(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["members"] }),
+    onError: () => toast({ title: "Failed to remove member", variant: "destructive" }),
+  });
 
   const addMember = () => {
     const name = newMemberName.trim();
@@ -93,15 +105,7 @@ const Dashboard = () => {
       toast({ title: "Member already exists", variant: "destructive" });
       return;
     }
-    const pinVal = newMemberPin.trim();
-    setMembers((prev) => [...prev, { id: crypto.randomUUID(), name, pin: pinVal || undefined }]);
-    setNewMemberName("");
-    setNewMemberPin("");
-    toast({ title: `${name} added to household` });
-  };
-
-  const removeMember = (id: string) => {
-    setMembers((prev) => prev.filter((m) => m.id !== id));
+    createMember.mutate({ name, pin: newMemberPin.trim() || undefined });
   };
 
   return (
@@ -195,7 +199,12 @@ const Dashboard = () => {
                 onKeyDown={(e) => e.key === "Enter" && addMember()}
                 className="w-28"
               />
-              <Button onClick={addMember} size="sm" className="gap-1.5 shrink-0">
+              <Button
+                onClick={addMember}
+                size="sm"
+                className="gap-1.5 shrink-0"
+                disabled={createMember.isPending}
+              >
                 <UserPlus className="h-4 w-4" /> Add
               </Button>
             </div>
@@ -226,7 +235,8 @@ const Dashboard = () => {
                       variant="ghost"
                       size="icon"
                       className="text-muted-foreground hover:text-destructive"
-                      onClick={() => removeMember(m.id)}
+                      onClick={() => deleteMember.mutate(m.id)}
+                      disabled={deleteMember.isPending}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>

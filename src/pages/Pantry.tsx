@@ -17,12 +17,14 @@ import {
   Plus,
   Search,
   Package,
+  PackagePlus,
   AlertTriangle,
   ShoppingCart,
   Trash2,
   ChefHat,
   Calendar,
   TrendingDown,
+  Pencil,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -109,21 +111,37 @@ const Pantry = () => {
   const qc = useQueryClient();
   const { toast } = useToast();
 
-  const [userId, setUserId] = useState<string | null>(
-    () => localStorage.getItem("home_hub_user_id")
-  );
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const [userId, setUserId] = useState<string | null>(() => {
+    const stored = localStorage.getItem("home_hub_user_id");
+    return stored && UUID_RE.test(stored) ? stored : null;
+  });
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [addOpen, setAddOpen] = useState(false);
   const [newItem, setNewItem] = useState(BLANK_ITEM);
   const [openGroups, setOpenGroups] = useState<Set<number>>(new Set());
+  const [closedCategories, setClosedCategories] = useState<Set<string>>(new Set());
   const [editingShoppingId, setEditingShoppingId] = useState<number | null>(null);
+  const [editingCategoryGroupId, setEditingCategoryGroupId] = useState<number | null>(null);
+  const [restockDialog, setRestockDialog] = useState<{ name: string; qty: string; unit: string; categoryId: number | null } | null>(null);
   const [editQty, setEditQty] = useState("");
+  const [newShoppingName, setNewShoppingName] = useState("");
+  const [newShoppingCategoryId, setNewShoppingCategoryId] = useState<number | null>(null);
+  const [editItemTarget, setEditItemTarget] = useState<PantryItem | null>(null);
+  const [editItemForm, setEditItemForm] = useState({ name: "", brand: "", categoryId: null as number | null, groupId: null as number | null, newGroupName: "", unit: "", quantity: "", minQuantity: "", expirationDate: "" });
 
   const toggleGroup = (id: number) =>
     setOpenGroups((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  const toggleCategory = (key: string) =>
+    setClosedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
 
@@ -142,27 +160,23 @@ const Pantry = () => {
 
   // ── Queries ─────────────────────────────────────────────────────────────────
   const { data: apiItems = [], isLoading } = useQuery({
-    queryKey: ["pantry", userId],
-    queryFn: () => api.getPantry(userId!),
-    enabled: !!userId,
+    queryKey: ["pantry"],
+    queryFn: () => api.getPantry(),
   });
 
   const { data: apiGroups = [] } = useQuery({
-    queryKey: ["pantry-groups", userId],
-    queryFn: () => api.getGroups(userId!),
-    enabled: !!userId,
+    queryKey: ["pantry-groups"],
+    queryFn: () => api.getGroups(),
   });
 
   const { data: apiCategories = [] } = useQuery({
     queryKey: ["categories"],
     queryFn: () => api.getCategories(),
-    enabled: !!userId,
   });
 
   const { data: apiShopping = [] } = useQuery({
-    queryKey: ["shopping", userId],
-    queryFn: () => api.getShopping(userId!),
-    enabled: !!userId,
+    queryKey: ["shopping"],
+    queryFn: () => api.getShopping(),
   });
 
   // ── Derived data ─────────────────────────────────────────────────────────────
@@ -208,6 +222,9 @@ const Pantry = () => {
     () => apiShopping.map((s) => ({
       id: s.id,
       name: s.item_name,
+      pantryItemId: s.pantry_item_id,
+      categoryId: s.category_id,
+      groupId: s.group_id,
       requestedQuantity: s.requested_quantity,
       unit: s.unit,
     })),
@@ -252,7 +269,7 @@ const Pantry = () => {
       });
     }
 
-    // Standalone items (no group)
+    // Standalone items (no group_id)
     for (const item of items.filter((i) => !i.groupId)) {
       if (!matchesFilter(item)) continue;
       result.push({
@@ -270,10 +287,33 @@ const Pantry = () => {
       });
     }
 
+    result.sort((a, b) => {
+      // nulls last for category
+      if (a.categoryId !== b.categoryId) {
+        if (a.categoryId == null) return 1;
+        if (b.categoryId == null) return -1;
+        return a.categoryId - b.categoryId;
+      }
+      // within category: named groups before standalones, then alphabetically
+      if (a.isNamedGroup !== b.isNamedGroup) return a.isNamedGroup ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
     return result;
   }, [items, groups, search, categoryFilter]);
 
+  const displayCategories = useMemo(() => {
+    const map = new Map<string, { key: string; categoryId: number | null; categoryName: string; groups: DisplayGroup[] }>();
+    for (const dg of displayGroups) {
+      const key = dg.categoryId != null ? String(dg.categoryId) : "__none__";
+      if (!map.has(key)) map.set(key, { key, categoryId: dg.categoryId, categoryName: dg.category, groups: [] });
+      map.get(key)!.groups.push(dg);
+    }
+    return Array.from(map.values());
+  }, [displayGroups]);
+
   const lowStockItems = items.filter((i) => i.quantity <= i.minQuantity);
+  const emptyGroups = groups.filter((g) => !items.some((i) => i.groupId === g.id));
   const expiringItems = items
     .filter((i) => getDaysUntilExpiry(i.expirationDate) <= 30)
     .sort((a, b) => getDaysUntilExpiry(a.expirationDate) - getDaysUntilExpiry(b.expirationDate));
@@ -281,6 +321,22 @@ const Pantry = () => {
   const totalItems = items.length;
   const wellStocked = items.filter((i) => i.quantity > i.minQuantity).length;
   const stockHealth = totalItems > 0 ? Math.round((wellStocked / totalItems) * 100) : 0;
+
+  const openRestockDialog = (group: PantryGroup) => {
+    setRestockDialog({ name: group.name, qty: "", unit: "", categoryId: group.categoryId });
+  };
+
+  const submitRestockDialog = () => {
+    if (!restockDialog?.name.trim()) return;
+    addShopping.mutate({
+      name: restockDialog.name.trim(),
+      requestedQuantity: restockDialog.qty ? Number(restockDialog.qty) : undefined,
+      unit: restockDialog.unit.trim() || undefined,
+      categoryId: restockDialog.categoryId,
+    });
+    setRestockDialog(null);
+    toast({ title: `${restockDialog.name} added to shopping list` });
+  };
 
   // ── Mutations ────────────────────────────────────────────────────────────────
   const addItem = useMutation({
@@ -295,51 +351,142 @@ const Pantry = () => {
         min_quantity: payload.item.minQuantity,
         expiration_date: payload.item.expirationDate || null,
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pantry", userId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pantry"] }),
     onError: (err) => toast({ title: "Failed to add item", description: String(err), variant: "destructive" }),
   });
 
   const deleteItem = useMutation({
     mutationFn: (id: number) => api.deletePantryItem(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pantry", userId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pantry"] }),
     onError: (err) => toast({ title: "Failed to delete item", description: String(err), variant: "destructive" }),
   });
 
   const updateQuantity = useMutation({
     mutationFn: ({ id, quantity }: { id: number; quantity: number }) =>
       api.updatePantryItem(id, { quantity }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pantry", userId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pantry"] }),
     onError: (err) => toast({ title: "Failed to update quantity", description: String(err), variant: "destructive" }),
   });
 
   const deleteGroup = useMutation({
     mutationFn: (id: number) => api.deleteGroup(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["pantry-groups", userId] });
-      qc.invalidateQueries({ queryKey: ["pantry", userId] });
+      qc.invalidateQueries({ queryKey: ["pantry-groups"] });
+      qc.invalidateQueries({ queryKey: ["pantry"] });
     },
     onError: (err) => toast({ title: "Failed to delete group", description: String(err), variant: "destructive" }),
   });
 
   const addShopping = useMutation({
-    mutationFn: ({ name, pantryItemId, requestedQuantity, unit }: { name: string; pantryItemId?: number; requestedQuantity?: number; unit?: string }) =>
-      api.addShoppingItem(userId!, name, pantryItemId, requestedQuantity, unit),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["shopping", userId] }),
+    mutationFn: ({ name, pantryItemId, requestedQuantity, unit, categoryId, groupId }: { name: string; pantryItemId?: number; requestedQuantity?: number; unit?: string; categoryId?: number | null; groupId?: number | null }) =>
+      api.addShoppingItem(userId!, name, pantryItemId, requestedQuantity, unit, categoryId, groupId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["shopping"] }),
     onError: (err) => toast({ title: "Failed to update shopping list", description: String(err), variant: "destructive" }),
   });
 
   const deleteShopping = useMutation({
     mutationFn: (id: number) => api.deleteShoppingItem(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["shopping", userId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["shopping"] }),
     onError: (err) => toast({ title: "Failed to update shopping list", description: String(err), variant: "destructive" }),
+  });
+
+  const processToInventory = useMutation({
+    mutationFn: async (s: { id: number; name: string; pantryItemId: number | null; categoryId: number | null; groupId: number | null; requestedQuantity: number | null; unit: string | null }) => {
+      const qty = s.requestedQuantity ?? 1;
+      const unit = s.unit ?? "units";
+      const byId = s.pantryItemId != null ? items.find((i) => i.id === s.pantryItemId) : null;
+      const byName = items.find((i) => i.name.toLowerCase() === s.name.toLowerCase());
+      const existing = byId ?? byName;
+      if (existing) {
+        await api.updatePantryItem(existing.id, { quantity: existing.quantity + qty });
+      } else {
+        await api.createPantryItem(userId!, {
+          name: s.name,
+          brand: null,
+          category_id: s.categoryId,
+          group_id: s.groupId,
+          quantity: qty,
+          unit,
+          min_quantity: 0,
+          expiration_date: null,
+        });
+      }
+      await api.deleteShoppingItem(s.id);
+      return { name: s.name, wasExisting: !!existing };
+    },
+    onSuccess: ({ name, wasExisting }) => {
+      qc.invalidateQueries({ queryKey: ["pantry"] });
+      qc.invalidateQueries({ queryKey: ["shopping"] });
+      toast({ title: wasExisting ? `${name} quantity updated in pantry` : `${name} added to pantry` });
+    },
+    onError: (err) => toast({ title: "Failed to process item", description: String(err), variant: "destructive" }),
   });
 
   const updateShopping = useMutation({
     mutationFn: ({ id, requestedQuantity, unit }: { id: number; requestedQuantity: number | null; unit: string | null }) =>
       api.updateShoppingItem(id, requestedQuantity, unit),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["shopping", userId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["shopping"] }),
     onError: (err) => toast({ title: "Failed to update shopping item", description: String(err), variant: "destructive" }),
   });
+
+  const updateCategory = useMutation({
+    mutationFn: ({ dg, categoryId }: { dg: DisplayGroup; categoryId: number | null }) =>
+      dg.isNamedGroup
+        ? api.updateGroup(dg.id, { category_id: categoryId })
+        : api.updatePantryItem(dg.entries[0].id, { category_id: categoryId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pantry"] });
+      qc.invalidateQueries({ queryKey: ["pantry-groups"] });
+      setEditingCategoryGroupId(null);
+    },
+    onError: (err) => toast({ title: "Failed to update category", description: String(err), variant: "destructive" }),
+  });
+
+  const saveItemEdit = useMutation({
+    mutationFn: async (id: number) => {
+      let groupId = editItemForm.groupId;
+      if (groupId === -1) {
+        const trimmed = editItemForm.newGroupName.trim();
+        if (trimmed) {
+          const created = await api.createGroup(userId!, { name: trimmed, category_id: editItemForm.categoryId });
+          qc.invalidateQueries({ queryKey: ["pantry-groups"] });
+          groupId = created.id;
+        } else {
+          groupId = null;
+        }
+      }
+      return api.updatePantryItem(id, {
+        name: editItemForm.name.trim(),
+        brand: editItemForm.brand.trim() || null,
+        category_id: editItemForm.categoryId,
+        group_id: groupId,
+        unit: editItemForm.unit.trim() || "units",
+        quantity: editItemForm.quantity !== "" ? Number(editItemForm.quantity) : 0,
+        min_quantity: editItemForm.minQuantity !== "" ? Number(editItemForm.minQuantity) : 0,
+        expiration_date: editItemForm.expirationDate || null,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pantry"] });
+      setEditItemTarget(null);
+    },
+    onError: (err) => toast({ title: "Failed to save changes", description: String(err), variant: "destructive" }),
+  });
+
+  const openEditItem = (item: PantryItem) => {
+    setEditItemTarget(item);
+    setEditItemForm({
+      name: item.name,
+      brand: item.brand ?? "",
+      categoryId: item.categoryId,
+      groupId: item.groupId,
+      newGroupName: "",
+      unit: item.unit,
+      quantity: String(item.quantity),
+      minQuantity: String(item.minQuantity),
+      expirationDate: item.expirationDate ?? "",
+    });
+  };
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
   const handleAdd = async () => {
@@ -372,7 +519,7 @@ const Pantry = () => {
           category_id: resolvedCategoryId,
         });
         resolvedGroupId = result.id;
-        qc.invalidateQueries({ queryKey: ["pantry-groups", userId] });
+        qc.invalidateQueries({ queryKey: ["pantry-groups"] });
       } catch (err) {
         toast({ title: "Failed to create group", description: String(err), variant: "destructive" });
         return;
@@ -397,17 +544,17 @@ const Pantry = () => {
     updateQuantity.mutate({ id, quantity: Math.max(0, item.quantity + delta) });
   };
 
-  const toggleShoppingList = (name: string, pantryItemId?: number, requestedQuantity?: number, unit?: string) => {
+  const toggleShoppingList = (name: string, pantryItemId?: number, requestedQuantity?: number, unit?: string, categoryId?: number | null, groupId?: number | null) => {
     const existing = shoppingList.find((s) => s.name === name);
     if (existing) { deleteShopping.mutate(existing.id); }
-    else { addShopping.mutate({ name, pantryItemId, requestedQuantity, unit }); }
+    else { addShopping.mutate({ name, pantryItemId, requestedQuantity, unit, categoryId, groupId }); }
   };
 
   const addAllLowStockToShopping = () => {
     lowStockItems.forEach((item) => {
       if (!shoppingNames.has(item.name)) {
         const needed = Math.max(0, item.minQuantity - item.quantity);
-        addShopping.mutate({ name: item.name, pantryItemId: item.id, requestedQuantity: needed, unit: item.unit });
+        addShopping.mutate({ name: item.name, pantryItemId: item.id, requestedQuantity: needed, unit: item.unit, categoryId: item.categoryId, groupId: item.groupId });
       }
     });
   };
@@ -585,17 +732,31 @@ const Pantry = () => {
                   {categoryNames.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
+              <Button onClick={() => openAddDialog()} className="shrink-0">
+                <Plus className="h-4 w-4 mr-2" />Add Item
+              </Button>
             </div>
 
-            <div className="grid gap-2">
+            <div className="space-y-4">
               {isLoading && (
                 <Card><CardContent className="py-12 text-center text-muted-foreground">Loading…</CardContent></Card>
               )}
-              {!isLoading && displayGroups.length === 0 && (
+              {!isLoading && displayCategories.length === 0 && (
                 <Card><CardContent className="py-12 text-center text-muted-foreground">No items found.</CardContent></Card>
               )}
 
-              {displayGroups.map((dg) => {
+              {displayCategories.map((dc) => {
+                const catOpen = !closedCategories.has(dc.key);
+                return (
+                  <Collapsible key={dc.key} open={catOpen} onOpenChange={() => toggleCategory(dc.key)}>
+                    <div className="flex items-center gap-2 px-1 py-1 cursor-pointer select-none" onClick={() => toggleCategory(dc.key)}>
+                      <ChevronRight className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${catOpen ? "rotate-90" : ""}`} />
+                      <span className="font-bold text-foreground tracking-wide uppercase text-xs">{dc.categoryName}</span>
+                      <Badge variant="outline" className="text-xs">{dc.groups.length}</Badge>
+                    </div>
+                    <CollapsibleContent>
+                      <div className="grid gap-2 pl-4">
+                        {dc.groups.map((dg) => {
                 const isOpen = openGroups.has(dg.id);
                 return (
                   <Collapsible key={dg.id} open={isOpen} onOpenChange={() => toggleGroup(dg.id)}>
@@ -607,7 +768,37 @@ const Pantry = () => {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-semibold text-foreground">{dg.name}</span>
-                              <Badge variant="secondary" className="text-xs">{dg.category}</Badge>
+                              {editingCategoryGroupId === dg.id ? (
+                                <Select
+                                  value={dg.categoryId != null ? String(dg.categoryId) : "__none__"}
+                                  onValueChange={(val) => {
+                                    updateCategory.mutate({ dg, categoryId: val === "__none__" ? null : parseInt(val) });
+                                  }}
+                                  onOpenChange={(open) => { if (!open) setEditingCategoryGroupId(null); }}
+                                >
+                                  <SelectTrigger
+                                    className="h-5 text-xs px-2 py-0 w-auto border-primary"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent onClick={(e) => e.stopPropagation()}>
+                                    <SelectItem value="__none__">Uncategorized</SelectItem>
+                                    {apiCategories.map((c) => (
+                                      <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <Badge
+                                  variant="secondary"
+                                  className="text-xs cursor-pointer hover:bg-primary/20"
+                                  title="Click to edit category"
+                                  onClick={(e) => { e.stopPropagation(); setEditingCategoryGroupId(dg.id); }}
+                                >
+                                  {dg.category}
+                                </Badge>
+                              )}
                               {dg.isLow && <Badge variant="destructive" className="text-xs">Low</Badge>}
                               {dg.isNamedGroup && dg.entries.length > 0 && (
                                 <Badge variant="outline" className="text-xs">{dg.entries.length} {dg.entries.length === 1 ? "lot" : "lots"}</Badge>
@@ -676,6 +867,9 @@ const Pantry = () => {
                                 <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleQuantityChange(item.id, -1)}>−</Button>
                                 <span className="w-7 text-center text-sm font-medium tabular-nums">{item.quantity}</span>
                                 <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleQuantityChange(item.id, 1)}>+</Button>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Edit item" onClick={() => openEditItem(item)}>
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => deleteItem.mutate(item.id)}>
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
@@ -685,6 +879,11 @@ const Pantry = () => {
                         </div>
                       </CollapsibleContent>
                     </Card>
+                  </Collapsible>
+                );
+              })}
+                      </div>
+                    </CollapsibleContent>
                   </Collapsible>
                 );
               })}
@@ -724,7 +923,7 @@ const Pantry = () => {
                         </p>
                       </div>
                       <div className="flex gap-2">
-                        <Button size="sm" variant="outline" onClick={() => toggleShoppingList(item.name, item.id, Math.max(0, item.minQuantity - item.quantity), item.unit)}>
+                        <Button size="sm" variant="outline" onClick={() => toggleShoppingList(item.name, item.id, Math.max(0, item.minQuantity - item.quantity), item.unit, item.categoryId, item.groupId)}>
                           {shoppingNames.has(item.name) ? "✓ On List" : "Add to List"}
                         </Button>
                         <Button size="sm" onClick={() => handleQuantityChange(item.id, item.minQuantity - item.quantity + 1)}>
@@ -734,6 +933,29 @@ const Pantry = () => {
                     </CardContent>
                   </Card>
                 ))}
+              </div>
+            )}
+
+            {emptyGroups.length > 0 && (
+              <div className="space-y-3 pt-4">
+                <h3 className="font-display text-lg font-semibold text-foreground flex items-center gap-2">
+                  <Package className="h-5 w-5 text-muted-foreground" /> Empty Groups
+                </h3>
+                <div className="grid gap-3">
+                  {emptyGroups.map((group) => (
+                    <Card key={group.id} className="border-dashed">
+                      <CardContent className="py-4 flex items-center justify-between gap-4">
+                        <div>
+                          <p className="font-semibold text-foreground">{group.name}</p>
+                          <p className="text-sm text-muted-foreground">{group.category}</p>
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => openRestockDialog(group)}>
+                          <ShoppingCart className="h-4 w-4 mr-1" /> Add to List
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -764,6 +986,43 @@ const Pantry = () => {
 
           {/* ── Shopping List Tab ── */}
           <TabsContent value="shopping" className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Add item to shopping list…"
+                value={newShoppingName}
+                onChange={(e) => setNewShoppingName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newShoppingName.trim()) {
+                    addShopping.mutate({ name: newShoppingName.trim(), categoryId: newShoppingCategoryId });
+                    setNewShoppingName("");
+                    setNewShoppingCategoryId(null);
+                  }
+                }}
+              />
+              <Select
+                value={newShoppingCategoryId != null ? String(newShoppingCategoryId) : "__none__"}
+                onValueChange={(v) => setNewShoppingCategoryId(v === "__none__" ? null : parseInt(v))}
+              >
+                <SelectTrigger className="w-44 shrink-0"><SelectValue placeholder="Category" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No category</SelectItem>
+                  {apiCategories.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                onClick={() => {
+                  if (!newShoppingName.trim()) return;
+                  addShopping.mutate({ name: newShoppingName.trim(), categoryId: newShoppingCategoryId });
+                  setNewShoppingName("");
+                  setNewShoppingCategoryId(null);
+                }}
+                disabled={!newShoppingName.trim() || addShopping.isPending}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
             <div className="flex items-center justify-between">
               <CardDescription>{shoppingList.length} items on your shopping list</CardDescription>
               {shoppingList.length > 0 && (
@@ -846,6 +1105,16 @@ const Pantry = () => {
                           )}
                           {item && <span className="text-sm text-muted-foreground">({item.quantity} {item.unit} left)</span>}
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-primary"
+                          title="Move to pantry"
+                          onClick={() => processToInventory.mutate(s)}
+                          disabled={processToInventory.isPending}
+                        >
+                          <PackagePlus className="h-4 w-4" />
+                        </Button>
                         <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => deleteShopping.mutate(s.id)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
@@ -858,6 +1127,143 @@ const Pantry = () => {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* ── Restock → Shopping List dialog ── */}
+      <Dialog open={!!restockDialog} onOpenChange={(open) => { if (!open) setRestockDialog(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add to Shopping List</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid gap-2">
+              <Label>Item name</Label>
+              <Input
+                value={restockDialog?.name ?? ""}
+                onChange={(e) => setRestockDialog((p) => p && ({ ...p, name: e.target.value }))}
+                onKeyDown={(e) => e.key === "Enter" && submitRestockDialog()}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Quantity <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="any"
+                  placeholder="e.g. 2"
+                  value={restockDialog?.qty ?? ""}
+                  onChange={(e) => setRestockDialog((p) => p && ({ ...p, qty: e.target.value }))}
+                  onKeyDown={(e) => e.key === "Enter" && submitRestockDialog()}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Unit <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <Input
+                  placeholder="e.g. lbs, cans"
+                  value={restockDialog?.unit ?? ""}
+                  onChange={(e) => setRestockDialog((p) => p && ({ ...p, unit: e.target.value }))}
+                  onKeyDown={(e) => e.key === "Enter" && submitRestockDialog()}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRestockDialog(null)}>Cancel</Button>
+            <Button onClick={submitRestockDialog} disabled={!restockDialog?.name.trim() || addShopping.isPending}>
+              <ShoppingCart className="h-4 w-4 mr-1" /> Add to List
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Edit Item Dialog ── */}
+      <Dialog open={!!editItemTarget} onOpenChange={(open) => { if (!open) setEditItemTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Item</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Name</Label>
+                <Input value={editItemForm.name} onChange={(e) => setEditItemForm((p) => ({ ...p, name: e.target.value }))} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Brand <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <Input value={editItemForm.brand} onChange={(e) => setEditItemForm((p) => ({ ...p, brand: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Category</Label>
+                <Select
+                  value={editItemForm.categoryId != null ? String(editItemForm.categoryId) : "__none__"}
+                  onValueChange={(v) => setEditItemForm((p) => ({ ...p, categoryId: v === "__none__" ? null : parseInt(v) }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Uncategorized</SelectItem>
+                    {apiCategories.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Group</Label>
+                <Select
+                  value={editItemForm.groupId != null ? String(editItemForm.groupId) : "__none__"}
+                  onValueChange={(v) => setEditItemForm((p) => ({ ...p, groupId: v === "__none__" ? null : parseInt(v), newGroupName: "" }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="No group" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No group</SelectItem>
+                    {groups.map((g) => (
+                      <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>
+                    ))}
+                    <SelectItem value="-1">+ New group…</SelectItem>
+                  </SelectContent>
+                </Select>
+                {editItemForm.groupId === -1 && (
+                  <Input
+                    placeholder="New group name"
+                    value={editItemForm.newGroupName}
+                    onChange={(e) => setEditItemForm((p) => ({ ...p, newGroupName: e.target.value }))}
+                    autoFocus
+                  />
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="grid gap-2">
+                <Label>Quantity</Label>
+                <Input type="number" min={0} step="any" value={editItemForm.quantity} onChange={(e) => setEditItemForm((p) => ({ ...p, quantity: e.target.value }))} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Min Quantity</Label>
+                <Input type="number" min={0} step="any" value={editItemForm.minQuantity} onChange={(e) => setEditItemForm((p) => ({ ...p, minQuantity: e.target.value }))} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Unit</Label>
+                <Input placeholder="e.g. lbs" value={editItemForm.unit} onChange={(e) => setEditItemForm((p) => ({ ...p, unit: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Expiration Date <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Input type="date" value={editItemForm.expirationDate} onChange={(e) => setEditItemForm((p) => ({ ...p, expirationDate: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditItemTarget(null)}>Cancel</Button>
+            <Button
+              onClick={() => editItemTarget && saveItemEdit.mutate(editItemTarget.id)}
+              disabled={!editItemForm.name.trim() || saveItemEdit.isPending}
+            >
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

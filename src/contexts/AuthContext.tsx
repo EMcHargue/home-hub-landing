@@ -1,14 +1,14 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
-type HouseholdMember = {
+export type HouseholdMember = {
   id: string;
   name: string;
-  pin?: string;
+  pin: string | null;
 };
 
 type AuthContextType = {
   currentUser: HouseholdMember | null;
-  login: (memberId: string, pin: string) => boolean;
+  login: (member: HouseholdMember) => void;
   logout: () => void;
   isAuthenticated: boolean;
 };
@@ -16,15 +16,6 @@ type AuthContextType = {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 const AUTH_KEY = "homebase_current_user";
-const MEMBERS_KEY = "homebase_members";
-
-function loadMembers(): HouseholdMember[] {
-  try {
-    return JSON.parse(localStorage.getItem(MEMBERS_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<HouseholdMember | null>(() => {
@@ -44,16 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [currentUser]);
 
-  const login = (memberId: string, pin: string): boolean => {
-    const members = loadMembers();
-    const member = members.find((m) => m.id === memberId);
-    if (!member) return false;
-    if (member.pin && member.pin !== pin) return false;
-    if (!member.pin && pin !== "") return false;
-    setCurrentUser(member);
-    return true;
-  };
-
+  const login = (member: HouseholdMember) => setCurrentUser(member);
   const logout = () => setCurrentUser(null);
 
   return (

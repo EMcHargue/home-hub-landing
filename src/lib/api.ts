@@ -1,5 +1,11 @@
 const BASE = "/api";
 
+export type ApiMember = {
+  id: string;
+  name: string;
+  pin: string | null;
+};
+
 export type ApiPantryItem = {
   id: number;
   user_id: string;
@@ -29,6 +35,8 @@ export type ApiShoppingItem = {
   item_name: string;
   requested_quantity: number | null;
   unit: string | null;
+  category_id: number | null;
+  group_id: number | null;
 };
 
 type NewPantryItem = Omit<ApiPantryItem, "id" | "user_id">;
@@ -51,10 +59,8 @@ async function json<T>(res: Response): Promise<T> {
 
 export const api = {
   // ── Pantry items ───────────────────────────────────────────────────────────
-  getPantry: (userId: string) =>
-    fetch(`${BASE}/pantry?user_id=${encodeURIComponent(userId)}`).then((r) =>
-      json<ApiPantryItem[]>(r)
-    ),
+  getPantry: () =>
+    fetch(`${BASE}/pantry`).then((r) => json<ApiPantryItem[]>(r)),
 
   createPantryItem: (userId: string, item: NewPantryItem) =>
     fetch(`${BASE}/pantry`, {
@@ -76,10 +82,8 @@ export const api = {
     ),
 
   // ── Pantry groups ──────────────────────────────────────────────────────────
-  getGroups: (userId: string) =>
-    fetch(`${BASE}/pantry-groups?user_id=${encodeURIComponent(userId)}`).then((r) =>
-      json<ApiPantryGroup[]>(r)
-    ),
+  getGroups: () =>
+    fetch(`${BASE}/pantry-groups`).then((r) => json<ApiPantryGroup[]>(r)),
 
   createGroup: (userId: string, group: NewPantryGroup) =>
     fetch(`${BASE}/pantry-groups`, {
@@ -112,10 +116,8 @@ export const api = {
     }).then((r) => json<ApiCategory>(r)),
 
   // ── Shopping list ──────────────────────────────────────────────────────────
-  getShopping: (userId: string) =>
-    fetch(`${BASE}/shopping?user_id=${encodeURIComponent(userId)}`).then((r) =>
-      json<ApiShoppingItem[]>(r)
-    ),
+  getShopping: () =>
+    fetch(`${BASE}/shopping`).then((r) => json<ApiShoppingItem[]>(r)),
 
   addShoppingItem: (
     userId: string,
@@ -123,6 +125,8 @@ export const api = {
     pantryItemId?: number,
     requestedQuantity?: number,
     unit?: string,
+    categoryId?: number | null,
+    groupId?: number | null,
   ) =>
     fetch(`${BASE}/shopping`, {
       method: "POST",
@@ -133,6 +137,8 @@ export const api = {
         pantry_item_id: pantryItemId ?? null,
         requested_quantity: requestedQuantity ?? null,
         unit: unit ?? null,
+        category_id: categoryId ?? null,
+        group_id: groupId ?? null,
       }),
     }).then((r) => json<{ id: number }>(r)),
 
@@ -148,12 +154,31 @@ export const api = {
       json<{ success: boolean }>(r)
     ),
 
+  // ── Members ────────────────────────────────────────────────────────────────
+  getMembers: () =>
+    fetch(`${BASE}/members`).then((r) => json<ApiMember[]>(r)),
+
+  createMember: (name: string, pin?: string) =>
+    fetch(`${BASE}/members`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, pin: pin || null }),
+    }).then((r) => json<ApiMember>(r)),
+
+  deleteMember: (id: string) =>
+    fetch(`${BASE}/members/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) =>
+      json<{ success: boolean }>(r)
+    ),
+
   // ── User bootstrap ─────────────────────────────────────────────────────────
   getOrCreateUserId: async (): Promise<string> => {
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const stored = localStorage.getItem("home_hub_user_id");
-    if (stored) {
+    if (stored && UUID_RE.test(stored)) {
       const check = await fetch(`${BASE}/users/${encodeURIComponent(stored)}`);
       if (check.ok) return stored;
+      localStorage.removeItem("home_hub_user_id");
+    } else if (stored) {
       localStorage.removeItem("home_hub_user_id");
     }
     const suffix = crypto.randomUUID().slice(0, 8);
@@ -161,7 +186,7 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        username: "local",
+        username: `local-${suffix}`,
         email: `local+${suffix}@home.hub`,
         password_hash: "placeholder",
       }),

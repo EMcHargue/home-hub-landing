@@ -8,16 +8,13 @@ function errMsg(err: unknown) {
 
 const router = Router();
 
-// GET /api/pantry?user_id=...
-router.get("/", async (req, res) => {
-  const { user_id } = req.query;
-  if (!user_id) return res.status(400).json({ error: "user_id required" });
+// GET /api/pantry
+router.get("/", async (_req, res) => {
   try {
     const pool = await getPool();
     const result = await pool
       .request()
-      .input("user_id", sql.UniqueIdentifier, user_id as string)
-      .query("SELECT * FROM dbo.pantry_items WHERE user_id = @user_id");
+      .query("SELECT * FROM dbo.pantry_items");
     res.json(result.recordset);
   } catch (err) {
     console.error(err);

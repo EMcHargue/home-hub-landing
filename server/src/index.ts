@@ -6,6 +6,7 @@ import categoriesRouter from "./routes/categories";
 import pantryRouter from "./routes/pantry";
 import pantryGroupsRouter from "./routes/pantry-groups";
 import shoppingRouter from "./routes/shopping";
+import membersRouter from "./routes/members";
 
 const app = express();
 app.use(cors());
@@ -16,6 +17,7 @@ app.use("/api/categories", categoriesRouter);
 app.use("/api/pantry", pantryRouter);
 app.use("/api/pantry-groups", pantryGroupsRouter);
 app.use("/api/shopping", shoppingRouter);
+app.use("/api/members", membersRouter);
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {

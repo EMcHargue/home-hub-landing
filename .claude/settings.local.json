@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /c/Users/mmier/Repos/home-hub-landing -maxdepth 2 -name .env* -o -name *.env*)"
+    ]
+  }
+}

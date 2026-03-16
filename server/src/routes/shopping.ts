@@ -4,16 +4,13 @@ import { getPool } from "../db";
 
 const router = Router();
 
-// GET /api/shopping?user_id=...
-router.get("/", async (req, res) => {
-  const { user_id } = req.query;
-  if (!user_id) return res.status(400).json({ error: "user_id required" });
+// GET /api/shopping
+router.get("/", async (_req, res) => {
   try {
     const pool = await getPool();
     const result = await pool
       .request()
-      .input("user_id", sql.UniqueIdentifier, user_id as string)
-      .query("SELECT * FROM dbo.shopping_list WHERE user_id = @user_id");
+      .query("SELECT * FROM dbo.shopping_list");
     res.json(result.recordset);
   } catch (err) {
     console.error(err);
@@ -23,7 +20,7 @@ router.get("/", async (req, res) => {
 
 // POST add item
 router.post("/", async (req, res) => {
-  const { user_id, pantry_item_id, item_name, requested_quantity, unit } = req.body;
+  const { user_id, pantry_item_id, item_name, requested_quantity, unit, category_id, group_id } = req.body;
   if (!user_id || !item_name) {
     return res.status(400).json({ error: "user_id and item_name required" });
   }
@@ -36,8 +33,10 @@ router.post("/", async (req, res) => {
       .input("item_name",          sql.NVarChar(255),    item_name)
       .input("requested_quantity", sql.Decimal(10, 3),   requested_quantity ?? null)
       .input("unit",               sql.NVarChar(50),     unit || null)
+      .input("category_id",        sql.Int,              category_id || null)
+      .input("group_id",           sql.Int,              group_id || null)
       .query(
-        "INSERT INTO dbo.shopping_list (user_id, pantry_item_id, item_name, requested_quantity, unit) OUTPUT INSERTED.id VALUES (@user_id, @pantry_item_id, @item_name, @requested_quantity, @unit)"
+        "INSERT INTO dbo.shopping_list (user_id, pantry_item_id, item_name, requested_quantity, unit, category_id, group_id) OUTPUT INSERTED.id VALUES (@user_id, @pantry_item_id, @item_name, @requested_quantity, @unit, @category_id, @group_id)"
       );
     res.status(201).json({ id: result.recordset[0].id });
   } catch (err) {
