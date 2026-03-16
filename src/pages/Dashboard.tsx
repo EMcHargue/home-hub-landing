@@ -39,6 +39,13 @@ const sections = [
     ready: true,
   },
   {
+    title: "Meal Planning",
+    description: "Plan weekly meals, save recipes, and auto-generate shopping lists.",
+    icon: UtensilsCrossed,
+    href: "/meals",
+    ready: true,
+  },
+  {
     title: "Maintenance",
     description: "Schedule repairs, track service history, and manage contractors.",
     icon: Wrench,
