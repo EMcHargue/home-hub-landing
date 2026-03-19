@@ -17,6 +17,8 @@ export type ApiPantryItem = {
   unit: string;
   min_quantity: number;
   expiration_date: string | null;
+  frozen: boolean;
+  refrigerated: boolean;
 };
 
 export type ApiPantryGroup = {
@@ -27,6 +29,24 @@ export type ApiPantryGroup = {
 };
 
 export type ApiCategory = { id: number; name: string };
+
+export type ApiRecipe = {
+  id: number;
+  name: string;
+  ingredients: string[];
+  instructions: string | null;
+  servings: number;
+  tags: string[];
+};
+
+export type ApiPlannedMeal = {
+  id: number;
+  plan_date: string;
+  slot: string;
+  recipe_id: number | null;
+  custom_name: string | null;
+  link: string | null;
+};
 
 export type ApiShoppingItem = {
   id: number;
@@ -169,6 +189,41 @@ export const api = {
     fetch(`${BASE}/members/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) =>
       json<{ success: boolean }>(r)
     ),
+
+  // ── Recipes ────────────────────────────────────────────────────────────────
+  getRecipes: () =>
+    fetch(`${BASE}/recipes`).then((r) => json<ApiRecipe[]>(r)),
+
+  createRecipe: (recipe: Omit<ApiRecipe, "id">) =>
+    fetch(`${BASE}/recipes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(recipe),
+    }).then((r) => json<{ id: number }>(r)),
+
+  deleteRecipe: (id: number) =>
+    fetch(`${BASE}/recipes/${id}`, { method: "DELETE" }).then((r) => json<{ success: boolean }>(r)),
+
+  // ── Planned meals ───────────────────────────────────────────────────────────
+  getPlannedMeals: (start: string, end: string) =>
+    fetch(`${BASE}/planned-meals?start=${start}&end=${end}`).then((r) => json<ApiPlannedMeal[]>(r)),
+
+  createPlannedMeal: (plan_date: string, slot: string, recipe_id: number | null, custom_name: string | null, link: string | null) =>
+    fetch(`${BASE}/planned-meals`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan_date, slot, recipe_id, custom_name, link }),
+    }).then((r) => json<{ id: number }>(r)),
+
+  updatePlannedMeal: (id: number, recipe_id: number | null, custom_name: string | null, link: string | null) =>
+    fetch(`${BASE}/planned-meals/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipe_id, custom_name, link }),
+    }).then((r) => json<{ success: boolean }>(r)),
+
+  deletePlannedMeal: (id: number) =>
+    fetch(`${BASE}/planned-meals/${id}`, { method: "DELETE" }).then((r) => json<{ success: boolean }>(r)),
 
   // ── User bootstrap ─────────────────────────────────────────────────────────
   getOrCreateUserId: async (): Promise<string> => {

@@ -34,6 +34,8 @@ router.post("/", async (req, res) => {
     expiration_date,
     brand,
     group_id,
+    frozen,
+    refrigerated,
   } = req.body;
   if (!user_id || !name || quantity == null || !unit || min_quantity == null) {
     return res.status(400).json({ error: "missing required fields" });
@@ -51,12 +53,14 @@ router.post("/", async (req, res) => {
       .input("expiration_date", sql.DateTime2,        expiration_date || null)
       .input("brand",           sql.NVarChar(255),    brand || null)
       .input("group_id",        sql.Int,              group_id || null)
+      .input("frozen",          sql.Bit,              frozen ? 1 : 0)
+      .input("refrigerated",    sql.Bit,              refrigerated ? 1 : 0)
       .query(`
         INSERT INTO dbo.pantry_items
-          (user_id,category_id,name,quantity,unit,min_quantity,expiration_date,brand,group_id)
+          (user_id,category_id,name,quantity,unit,min_quantity,expiration_date,brand,group_id,frozen,refrigerated)
         OUTPUT INSERTED.id
         VALUES
-          (@user_id,@category_id,@name,@quantity,@unit,@min_quantity,@expiration_date,@brand,@group_id)
+          (@user_id,@category_id,@name,@quantity,@unit,@min_quantity,@expiration_date,@brand,@group_id,@frozen,@refrigerated)
       `);
     res.status(201).json({ id: result.recordset[0].id });
   } catch (err) {
@@ -70,7 +74,7 @@ router.put("/:id", async (req, res) => {
   const { id } = req.params;
   const fields = req.body;
 
-  const allowed = ["category_id", "name", "quantity", "unit", "min_quantity", "expiration_date", "brand", "group_id"];
+  const allowed = ["category_id", "name", "quantity", "unit", "min_quantity", "expiration_date", "brand", "group_id", "frozen", "refrigerated"];
   const setClauses: string[] = [];
   const request = (await getPool()).request().input("id", sql.Int, parseInt(id));
 
@@ -79,6 +83,8 @@ router.put("/:id", async (req, res) => {
       setClauses.push(`${f} = @${f}`);
       if (f === "group_id" || f === "category_id") {
         request.input(f, sql.Int, fields[f] || null);
+      } else if (f === "frozen" || f === "refrigerated") {
+        request.input(f, sql.Bit, fields[f] ? 1 : 0);
       } else {
         request.input(f, fields[f]);
       }

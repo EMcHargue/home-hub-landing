@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
@@ -25,6 +25,8 @@ import {
   Calendar,
   TrendingDown,
   Pencil,
+  Snowflake,
+  Refrigerator,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -45,6 +47,8 @@ const BLANK_ITEM = {
   expirationDate: "",
   groupSelection: "none",
   newGroupName: "",
+  frozen: false,
+  refrigerated: false,
 };
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -60,6 +64,8 @@ type PantryItem = {
   unit: string;
   minQuantity: number;
   expirationDate?: string;
+  frozen: boolean;
+  refrigerated: boolean;
 };
 
 type PantryGroup = {
@@ -129,7 +135,7 @@ const Pantry = () => {
   const [newShoppingName, setNewShoppingName] = useState("");
   const [newShoppingCategoryId, setNewShoppingCategoryId] = useState<number | null>(null);
   const [editItemTarget, setEditItemTarget] = useState<PantryItem | null>(null);
-  const [editItemForm, setEditItemForm] = useState({ name: "", brand: "", categoryId: null as number | null, groupId: null as number | null, newGroupName: "", unit: "", quantity: "", minQuantity: "", expirationDate: "" });
+  const [editItemForm, setEditItemForm] = useState({ name: "", brand: "", categoryId: null as number | null, groupId: null as number | null, newGroupName: "", unit: "", quantity: "", minQuantity: "", expirationDate: "", frozen: false, refrigerated: false });
 
   const toggleGroup = (id: number) =>
     setOpenGroups((prev) => {
@@ -204,6 +210,8 @@ const Pantry = () => {
       unit: i.unit,
       minQuantity: i.min_quantity,
       expirationDate: i.expiration_date ?? undefined,
+      frozen: !!i.frozen,
+      refrigerated: !!i.refrigerated,
     })),
     [apiItems, categoryById]
   );
@@ -312,8 +320,8 @@ const Pantry = () => {
     return Array.from(map.values());
   }, [displayGroups]);
 
-  const lowStockItems = items.filter((i) => i.quantity <= i.minQuantity);
-  const emptyGroups = groups.filter((g) => !items.some((i) => i.groupId === g.id));
+  const lowStockItems = items.filter((i) => i.quantity <= i.minQuantity && i.category !== "Leftovers");
+  const emptyGroups = groups.filter((g) => !items.some((i) => i.groupId === g.id) && g.category !== "Leftovers");
   const expiringItems = items
     .filter((i) => getDaysUntilExpiry(i.expirationDate) <= 30)
     .sort((a, b) => getDaysUntilExpiry(a.expirationDate) - getDaysUntilExpiry(b.expirationDate));
@@ -350,6 +358,8 @@ const Pantry = () => {
         unit: payload.item.unit,
         min_quantity: payload.item.minQuantity,
         expiration_date: payload.item.expirationDate || null,
+        frozen: payload.item.frozen,
+        refrigerated: payload.item.refrigerated,
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pantry"] }),
     onError: (err) => toast({ title: "Failed to add item", description: String(err), variant: "destructive" }),
@@ -407,7 +417,7 @@ const Pantry = () => {
           group_id: s.groupId,
           quantity: qty,
           unit,
-          min_quantity: 0,
+          min_quantity: 1,
           expiration_date: null,
         });
       }
@@ -464,6 +474,8 @@ const Pantry = () => {
         quantity: editItemForm.quantity !== "" ? Number(editItemForm.quantity) : 0,
         min_quantity: editItemForm.minQuantity !== "" ? Number(editItemForm.minQuantity) : 0,
         expiration_date: editItemForm.expirationDate || null,
+        frozen: editItemForm.frozen,
+        refrigerated: editItemForm.refrigerated,
       });
     },
     onSuccess: () => {
@@ -485,6 +497,8 @@ const Pantry = () => {
       quantity: String(item.quantity),
       minQuantity: String(item.minQuantity),
       expirationDate: item.expirationDate ?? "",
+      frozen: item.frozen,
+      refrigerated: item.refrigerated,
     });
   };
 
@@ -585,9 +599,6 @@ const Pantry = () => {
 
           {/* Add Item dialog */}
           <Dialog open={addOpen} onOpenChange={setAddOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={() => openAddDialog()}><Plus className="h-4 w-4 mr-2" />Add Item</Button>
-            </DialogTrigger>
             <DialogContent>
               <DialogHeader><DialogTitle>Add Pantry Item</DialogTitle></DialogHeader>
               <div className="grid gap-4 py-2">
@@ -675,6 +686,34 @@ const Pantry = () => {
                 <div className="grid gap-2">
                   <Label>Expiration Date</Label>
                   <Input type="date" value={newItem.expirationDate} onChange={(e) => setNewItem((p) => ({ ...p, expirationDate: e.target.value }))} />
+                </div>
+
+                {/* Frozen / Refrigerated */}
+                <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="add-frozen"
+                      type="checkbox"
+                      checked={newItem.frozen}
+                      onChange={(e) => setNewItem((p) => ({ ...p, frozen: e.target.checked }))}
+                      className="h-4 w-4 rounded border-border accent-primary"
+                    />
+                    <Label htmlFor="add-frozen" className="flex items-center gap-1.5 cursor-pointer">
+                      <Snowflake className="h-4 w-4 text-blue-400" /> Frozen
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="add-refrigerated"
+                      type="checkbox"
+                      checked={newItem.refrigerated}
+                      onChange={(e) => setNewItem((p) => ({ ...p, refrigerated: e.target.checked }))}
+                      className="h-4 w-4 rounded border-border accent-primary"
+                    />
+                    <Label htmlFor="add-refrigerated" className="flex items-center gap-1.5 cursor-pointer">
+                      <Refrigerator className="h-4 w-4 text-cyan-500" /> Refrigerated
+                    </Label>
+                  </div>
                 </div>
               </div>
               <DialogFooter>
@@ -852,10 +891,14 @@ const Pantry = () => {
                                   <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                                     <span className="text-sm font-medium text-foreground">{item.name}</span>
                                     {item.brand && <span className="text-xs text-muted-foreground">{item.brand}</span>}
+                                    {item.frozen && <span title="Frozen"><Snowflake className="h-3.5 w-3.5 text-blue-400" /></span>}
+                                    {item.refrigerated && <span title="Refrigerated"><Refrigerator className="h-3.5 w-3.5 text-cyan-500" /></span>}
                                   </div>
                                 )}
                                 <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
                                   <span className="font-medium text-foreground tabular-nums">{item.quantity} {item.unit}</span>
+                                  {!dg.isNamedGroup && item.frozen && <span title="Frozen"><Snowflake className="h-3.5 w-3.5 text-blue-400" /></span>}
+                                  {!dg.isNamedGroup && item.refrigerated && <span title="Refrigerated"><Refrigerator className="h-3.5 w-3.5 text-cyan-500" /></span>}
                                   <span className="text-border">|</span>
                                   <span>Min: {item.minQuantity}</span>
                                   {item.expirationDate && (
@@ -1251,6 +1294,32 @@ const Pantry = () => {
             <div className="grid gap-2">
               <Label>Expiration Date <span className="text-muted-foreground font-normal">(optional)</span></Label>
               <Input type="date" value={editItemForm.expirationDate} onChange={(e) => setEditItemForm((p) => ({ ...p, expirationDate: e.target.value }))} />
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <input
+                  id="edit-frozen"
+                  type="checkbox"
+                  checked={editItemForm.frozen}
+                  onChange={(e) => setEditItemForm((p) => ({ ...p, frozen: e.target.checked }))}
+                  className="h-4 w-4 rounded border-border accent-primary"
+                />
+                <Label htmlFor="edit-frozen" className="flex items-center gap-1.5 cursor-pointer">
+                  <Snowflake className="h-4 w-4 text-blue-400" /> Frozen
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  id="edit-refrigerated"
+                  type="checkbox"
+                  checked={editItemForm.refrigerated}
+                  onChange={(e) => setEditItemForm((p) => ({ ...p, refrigerated: e.target.checked }))}
+                  className="h-4 w-4 rounded border-border accent-primary"
+                />
+                <Label htmlFor="edit-refrigerated" className="flex items-center gap-1.5 cursor-pointer">
+                  <Refrigerator className="h-4 w-4 text-cyan-500" /> Refrigerated
+                </Label>
+              </div>
             </div>
           </div>
           <DialogFooter>

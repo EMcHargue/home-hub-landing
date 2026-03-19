@@ -7,6 +7,8 @@ import pantryRouter from "./routes/pantry";
 import pantryGroupsRouter from "./routes/pantry-groups";
 import shoppingRouter from "./routes/shopping";
 import membersRouter from "./routes/members";
+import recipesRouter from "./routes/recipes";
+import plannedMealsRouter from "./routes/planned-meals";
 
 const app = express();
 app.use(cors());
@@ -18,6 +20,8 @@ app.use("/api/pantry", pantryRouter);
 app.use("/api/pantry-groups", pantryGroupsRouter);
 app.use("/api/shopping", shoppingRouter);
 app.use("/api/members", membersRouter);
+app.use("/api/recipes", recipesRouter);
+app.use("/api/planned-meals", plannedMealsRouter);
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
