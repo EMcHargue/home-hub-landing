@@ -22,7 +22,11 @@ router.get("/", async (req, res) => {
     }
     query += " ORDER BY plan_date, slot, id";
     const result = await request.query(query);
-    res.json(result.recordset);
+    const records = result.recordset.map((row: Record<string, unknown>) => ({
+      ...row,
+      ingredients: row.ingredients ? JSON.parse(row.ingredients as string) : null,
+    }));
+    res.json(records);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "database error", detail: errMsg(err) });
@@ -31,19 +35,20 @@ router.get("/", async (req, res) => {
 
 // POST /api/planned-meals  (insert a new item for this date+slot)
 router.post("/", async (req, res) => {
-  const { plan_date, slot, recipe_id, custom_name, link } = req.body;
+  const { plan_date, slot, recipe_id, custom_name, link, ingredients } = req.body;
   if (!plan_date || !slot) return res.status(400).json({ error: "plan_date and slot required" });
   try {
     const pool = await getPool();
     const result = await pool
       .request()
-      .input("plan_date",   sql.Date,           plan_date)
-      .input("slot",        sql.NVarChar(20),    slot)
-      .input("recipe_id",   sql.Int,             recipe_id ?? null)
-      .input("custom_name", sql.NVarChar(255),   custom_name ?? null)
-      .input("link",        sql.NVarChar(500),   link ?? null)
+      .input("plan_date",    sql.Date,           plan_date)
+      .input("slot",         sql.NVarChar(20),    slot)
+      .input("recipe_id",    sql.Int,             recipe_id ?? null)
+      .input("custom_name",  sql.NVarChar(255),   custom_name ?? null)
+      .input("link",         sql.NVarChar(500),   link ?? null)
+      .input("ingredients",  sql.NVarChar(sql.MAX), ingredients?.length ? JSON.stringify(ingredients) : null)
       .query(
-        "INSERT INTO dbo.planned_meals (plan_date, slot, recipe_id, custom_name, link) OUTPUT INSERTED.id VALUES (@plan_date, @slot, @recipe_id, @custom_name, @link)"
+        "INSERT INTO dbo.planned_meals (plan_date, slot, recipe_id, custom_name, link, ingredients) OUTPUT INSERTED.id VALUES (@plan_date, @slot, @recipe_id, @custom_name, @link, @ingredients)"
       );
     res.status(201).json({ id: result.recordset[0].id });
   } catch (err) {
@@ -54,16 +59,17 @@ router.post("/", async (req, res) => {
 
 // PUT /api/planned-meals/:id  (edit existing item)
 router.put("/:id", async (req, res) => {
-  const { recipe_id, custom_name, link } = req.body;
+  const { recipe_id, custom_name, link, ingredients } = req.body;
   try {
     const pool = await getPool();
     await pool
       .request()
-      .input("id",          sql.Int,           parseInt(req.params.id))
-      .input("recipe_id",   sql.Int,           recipe_id ?? null)
-      .input("custom_name", sql.NVarChar(255), custom_name ?? null)
-      .input("link",        sql.NVarChar(500), link ?? null)
-      .query("UPDATE dbo.planned_meals SET recipe_id = @recipe_id, custom_name = @custom_name, link = @link WHERE id = @id");
+      .input("id",           sql.Int,             parseInt(req.params.id))
+      .input("recipe_id",    sql.Int,             recipe_id ?? null)
+      .input("custom_name",  sql.NVarChar(255),   custom_name ?? null)
+      .input("link",         sql.NVarChar(500),   link ?? null)
+      .input("ingredients",  sql.NVarChar(sql.MAX), ingredients?.length ? JSON.stringify(ingredients) : null)
+      .query("UPDATE dbo.planned_meals SET recipe_id = @recipe_id, custom_name = @custom_name, link = @link, ingredients = @ingredients WHERE id = @id");
     res.json({ success: true });
   } catch (err) {
     console.error(err);

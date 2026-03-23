@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
@@ -28,7 +29,7 @@ import {
   Snowflake,
   Refrigerator,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, type ApiShoppingListLink } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
 const FALLBACK_CATEGORIES = [
@@ -111,6 +112,43 @@ function getExpiryBadge(date?: string) {
   return <Badge variant="secondary">{formatExpiryDate(date!)}</Badge>;
 }
 
+// ── PlannedBadge ──────────────────────────────────────────────────────────────
+
+function PlannedBadge({ links }: { links: ApiShoppingListLink[] }) {
+  if (links.length === 0) return null;
+  return (
+    <Popover>
+      <PopoverTrigger
+        onClick={(e) => e.stopPropagation()}
+        className="inline-flex"
+      >
+        <Badge variant="secondary" className="text-xs bg-primary/10 text-primary border-primary/20 cursor-pointer hover:bg-primary/20">
+          Planned
+        </Badge>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-56 p-3 space-y-2"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="text-xs font-semibold text-foreground">Planned for meal</p>
+        {links.map((l) => (
+          <div key={l.id} className="text-xs space-y-0.5">
+            {l.meal_names.length > 0
+              ? l.meal_names.map((name) => (
+                  <p key={name} className="text-foreground font-medium">{name}</p>
+                ))
+              : <p className="text-muted-foreground capitalize">{l.ingredient_name}</p>
+            }
+            <p className="text-muted-foreground">
+              Week of {new Date(l.week_start).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })}
+            </p>
+          </div>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 const Pantry = () => {
@@ -135,7 +173,7 @@ const Pantry = () => {
   const [newShoppingName, setNewShoppingName] = useState("");
   const [newShoppingCategoryId, setNewShoppingCategoryId] = useState<number | null>(null);
   const [editItemTarget, setEditItemTarget] = useState<PantryItem | null>(null);
-  const [editItemForm, setEditItemForm] = useState({ name: "", brand: "", categoryId: null as number | null, groupId: null as number | null, newGroupName: "", unit: "", quantity: "", minQuantity: "", expirationDate: "", frozen: false, refrigerated: false });
+  const [editItemForm, setEditItemForm] = useState({ name: "", brand: "", categoryId: null as number | null, newCategoryName: "", groupId: null as number | null, newGroupName: "", unit: "", quantity: "", minQuantity: "", expirationDate: "", frozen: false, refrigerated: false });
 
   const toggleGroup = (id: number) =>
     setOpenGroups((prev) => {
@@ -184,6 +222,27 @@ const Pantry = () => {
     queryKey: ["shopping"],
     queryFn: () => api.getShopping(),
   });
+
+  const { data: allShoppingListLinks = [] } = useQuery({
+    queryKey: ["shopping-list-links"],
+    queryFn: () => api.getShoppingListLinks(),
+  });
+
+  // Set of pantry item IDs that are linked to a meal plan ingredient
+  const plannedPantryItemIds = useMemo(
+    () => new Set(allShoppingListLinks.map((l) => l.pantry_item_id)),
+    [allShoppingListLinks]
+  );
+
+  // Map: pantry item id → list of full link objects
+  const planLinksByItemId = useMemo(() => {
+    const map = new Map<number, typeof allShoppingListLinks>();
+    for (const l of allShoppingListLinks) {
+      if (!map.has(l.pantry_item_id)) map.set(l.pantry_item_id, []);
+      map.get(l.pantry_item_id)!.push(l);
+    }
+    return map;
+  }, [allShoppingListLinks]);
 
   // ── Derived data ─────────────────────────────────────────────────────────────
   const categoryById = useMemo(
@@ -419,6 +478,8 @@ const Pantry = () => {
           unit,
           min_quantity: 1,
           expiration_date: null,
+          frozen: false,
+          refrigerated: false,
         });
       }
       await api.deleteShoppingItem(s.id);
@@ -454,21 +515,37 @@ const Pantry = () => {
 
   const saveItemEdit = useMutation({
     mutationFn: async (id: number) => {
+      let categoryId = editItemForm.categoryId;
+      if (categoryId === -1) {
+        const trimmed = editItemForm.newCategoryName.trim();
+        if (trimmed) {
+          const created = await api.createCategory(trimmed);
+          qc.invalidateQueries({ queryKey: ["categories"] });
+          categoryId = created.id;
+        } else {
+          categoryId = null;
+        }
+      }
       let groupId = editItemForm.groupId;
       if (groupId === -1) {
         const trimmed = editItemForm.newGroupName.trim();
         if (trimmed) {
-          const created = await api.createGroup(userId!, { name: trimmed, category_id: editItemForm.categoryId });
+          const created = await api.createGroup(userId!, { name: trimmed, category_id: categoryId });
           qc.invalidateQueries({ queryKey: ["pantry-groups"] });
           groupId = created.id;
         } else {
           groupId = null;
         }
       }
+      // If the item is in an existing group, sync the group's category too
+      if (groupId != null) {
+        await api.updateGroup(groupId, { category_id: categoryId });
+        qc.invalidateQueries({ queryKey: ["pantry-groups"] });
+      }
       return api.updatePantryItem(id, {
         name: editItemForm.name.trim(),
         brand: editItemForm.brand.trim() || null,
-        category_id: editItemForm.categoryId,
+        category_id: categoryId,
         group_id: groupId,
         unit: editItemForm.unit.trim() || "units",
         quantity: editItemForm.quantity !== "" ? Number(editItemForm.quantity) : 0,
@@ -491,6 +568,7 @@ const Pantry = () => {
       name: item.name,
       brand: item.brand ?? "",
       categoryId: item.categoryId,
+      newCategoryName: "",
       groupId: item.groupId,
       newGroupName: "",
       unit: item.unit,
@@ -839,6 +917,9 @@ const Pantry = () => {
                                 </Badge>
                               )}
                               {dg.isLow && <Badge variant="destructive" className="text-xs">Low</Badge>}
+                              {dg.entries.some((e) => plannedPantryItemIds.has(e.id)) && (
+                                <PlannedBadge links={dg.entries.flatMap((e) => planLinksByItemId.get(e.id) ?? [])} />
+                              )}
                               {dg.isNamedGroup && dg.entries.length > 0 && (
                                 <Badge variant="outline" className="text-xs">{dg.entries.length} {dg.entries.length === 1 ? "lot" : "lots"}</Badge>
                               )}
@@ -893,12 +974,18 @@ const Pantry = () => {
                                     {item.brand && <span className="text-xs text-muted-foreground">{item.brand}</span>}
                                     {item.frozen && <span title="Frozen"><Snowflake className="h-3.5 w-3.5 text-blue-400" /></span>}
                                     {item.refrigerated && <span title="Refrigerated"><Refrigerator className="h-3.5 w-3.5 text-cyan-500" /></span>}
+                                    {plannedPantryItemIds.has(item.id) && (
+                                      <PlannedBadge links={planLinksByItemId.get(item.id) ?? []} />
+                                    )}
                                   </div>
                                 )}
                                 <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
                                   <span className="font-medium text-foreground tabular-nums">{item.quantity} {item.unit}</span>
                                   {!dg.isNamedGroup && item.frozen && <span title="Frozen"><Snowflake className="h-3.5 w-3.5 text-blue-400" /></span>}
                                   {!dg.isNamedGroup && item.refrigerated && <span title="Refrigerated"><Refrigerator className="h-3.5 w-3.5 text-cyan-500" /></span>}
+                                  {!dg.isNamedGroup && plannedPantryItemIds.has(item.id) && (
+                                    <PlannedBadge links={planLinksByItemId.get(item.id) ?? []} />
+                                  )}
                                   <span className="text-border">|</span>
                                   <span>Min: {item.minQuantity}</span>
                                   {item.expirationDate && (
@@ -1240,8 +1327,8 @@ const Pantry = () => {
               <div className="grid gap-2">
                 <Label>Category</Label>
                 <Select
-                  value={editItemForm.categoryId != null ? String(editItemForm.categoryId) : "__none__"}
-                  onValueChange={(v) => setEditItemForm((p) => ({ ...p, categoryId: v === "__none__" ? null : parseInt(v) }))}
+                  value={editItemForm.categoryId === -1 ? "__new__" : editItemForm.categoryId != null ? String(editItemForm.categoryId) : "__none__"}
+                  onValueChange={(v) => setEditItemForm((p) => ({ ...p, categoryId: v === "__none__" ? null : v === "__new__" ? -1 : parseInt(v), newCategoryName: "" }))}
                 >
                   <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                   <SelectContent>
@@ -1249,8 +1336,17 @@ const Pantry = () => {
                     {apiCategories.map((c) => (
                       <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
                     ))}
+                    <SelectItem value="__new__">Create new category…</SelectItem>
                   </SelectContent>
                 </Select>
+                {editItemForm.categoryId === -1 && (
+                  <Input
+                    placeholder="Category name, e.g. Frozen"
+                    value={editItemForm.newCategoryName}
+                    onChange={(e) => setEditItemForm((p) => ({ ...p, newCategoryName: e.target.value }))}
+                    autoFocus
+                  />
+                )}
               </div>
               <div className="grid gap-2">
                 <Label>Group</Label>

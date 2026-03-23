@@ -35,6 +35,7 @@ import {
   X,
   Snowflake,
   Refrigerator,
+  List,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { api, ApiRecipe, ApiPlannedMeal } from "@/lib/api";
@@ -107,6 +108,11 @@ const MealPlanning = () => {
     [categories]
   );
 
+  const { data: pantryItems = [] } = useQuery({
+    queryKey: ["pantry"],
+    queryFn: () => api.getPantry(),
+  });
+
   const { data: plannedMeals = [] } = useQuery({
     queryKey: ["planned-meals", weekStart, weekEnd],
     queryFn: () => api.getPlannedMeals(weekStart, weekEnd),
@@ -130,15 +136,15 @@ const MealPlanning = () => {
 
   // ── Planned meal mutations ────────────────────────────────────────────────
   const createMeal = useMutation({
-    mutationFn: ({ plan_date, slot, recipe_id, custom_name, link }: { plan_date: string; slot: string; recipe_id: number | null; custom_name: string | null; link: string | null }) =>
-      api.createPlannedMeal(plan_date, slot, recipe_id, custom_name, link),
+    mutationFn: ({ plan_date, slot, recipe_id, custom_name, link, ingredients }: { plan_date: string; slot: string; recipe_id: number | null; custom_name: string | null; link: string | null; ingredients: string[] | null }) =>
+      api.createPlannedMeal(plan_date, slot, recipe_id, custom_name, link, ingredients),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["planned-meals"] }),
     onError: (err) => toast({ title: "Failed to save meal", description: String(err), variant: "destructive" }),
   });
 
   const updateMeal = useMutation({
-    mutationFn: ({ id, recipe_id, custom_name, link }: { id: number; recipe_id: number | null; custom_name: string | null; link: string | null }) =>
-      api.updatePlannedMeal(id, recipe_id, custom_name, link),
+    mutationFn: ({ id, recipe_id, custom_name, link, ingredients }: { id: number; recipe_id: number | null; custom_name: string | null; link: string | null; ingredients: string[] | null }) =>
+      api.updatePlannedMeal(id, recipe_id, custom_name, link, ingredients),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["planned-meals"] }),
     onError: (err) => toast({ title: "Failed to update meal", description: String(err), variant: "destructive" }),
   });
@@ -218,6 +224,62 @@ const MealPlanning = () => {
     });
   };
 
+  // ── Ingredient pantry lookup (DB-backed) ─────────────────────────────────
+  const { data: shoppingListLinks = [] } = useQuery({
+    queryKey: ["shopping-list-links", weekStart],
+    queryFn: () => api.getShoppingListLinks(weekStart),
+  });
+  // ingredient name → pantry item id
+  const linkedIngredients = useMemo(
+    () => new Map<string, number>(shoppingListLinks.map((l) => [l.ingredient_name, l.pantry_item_id])),
+    [shoppingListLinks]
+  );
+  // ingredient name → link row id (needed for deletes)
+  const linkIdByIngredient = useMemo(
+    () => new Map<string, number>(shoppingListLinks.map((l) => [l.ingredient_name, l.id])),
+    [shoppingListLinks]
+  );
+
+  const upsertLink = useMutation({
+    mutationFn: ({ ingredient, pantryItemId, mealNames }: { ingredient: string; pantryItemId: number; mealNames: string[] }) =>
+      api.upsertShoppingListLink(weekStart, ingredient, pantryItemId, mealNames),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["shopping-list-links", weekStart] }),
+  });
+
+  const deleteLink = useMutation({
+    mutationFn: (id: number) => api.deleteShoppingListLink(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["shopping-list-links", weekStart] }),
+  });
+
+  // ── Export to pantry shopping list ───────────────────────────────────────
+  const { data: pantryShoppingList = [] } = useQuery({
+    queryKey: ["shopping"],
+    queryFn: () => api.getShopping(),
+  });
+
+  const exportToPantryList = useMutation({
+    mutationFn: async (items: string[]) => {
+      const existingNames = new Set(pantryShoppingList.map((i) => i.item_name.toLowerCase()));
+      const newItems = items.filter((name) => !existingNames.has(name.toLowerCase()));
+      await Promise.all(newItems.map((name) => api.addShoppingItem(userId!, name)));
+      return newItems.length;
+    },
+    onSuccess: (count) => {
+      qc.invalidateQueries({ queryKey: ["shopping"] });
+      if (count === 0) {
+        toast({ title: "All items already on shopping list" });
+      } else {
+        toast({ title: `${count} item${count === 1 ? "" : "s"} added to shopping list` });
+      }
+    },
+    onError: (err) => toast({ title: "Failed to export", description: String(err), variant: "destructive" }),
+  });
+  type PantryNav =
+    | { level: "categories" }
+    | { level: "groups"; categoryId: number | null; categoryName: string }
+    | { level: "items"; categoryId: number | null; categoryName: string; groupId: number | null; groupName: string };
+  const [ingredientDialog, setIngredientDialog] = useState<{ ingredient: string; nav: PantryNav } | null>(null);
+
   // ── Assign meal dialog ────────────────────────────────────────────────────
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignDate, setAssignDate] = useState("");
@@ -226,6 +288,7 @@ const MealPlanning = () => {
   const [assignCustom, setAssignCustom] = useState("");
   const [assignExistingId, setAssignExistingId] = useState<number | null>(null);
   const [assignLink, setAssignLink] = useState("");
+  const [assignIngredients, setAssignIngredients] = useState("");
 
   const openAssign = (date: string, slot: MealSlot, existing?: ApiPlannedMeal) => {
     setAssignDate(date);
@@ -233,6 +296,7 @@ const MealPlanning = () => {
     setAssignRecipeId(existing?.recipe_id != null ? String(existing.recipe_id) : "");
     setAssignCustom(existing?.custom_name ?? "");
     setAssignLink(existing?.link ?? "");
+    setAssignIngredients(existing?.ingredients?.join("\n") ?? "");
     setAssignExistingId(existing?.id ?? null);
     setAssignOpen(true);
   };
@@ -242,10 +306,13 @@ const MealPlanning = () => {
     const recipe_id = assignRecipeId ? parseInt(assignRecipeId) : null;
     const custom_name = assignCustom.trim() || null;
     const link = assignLink.trim() || null;
+    const ingredients = !recipe_id
+      ? assignIngredients.split("\n").map((l) => l.trim()).filter(Boolean)
+      : null;
     if (assignExistingId !== null) {
-      updateMeal.mutate({ id: assignExistingId, recipe_id, custom_name, link }, { onSuccess: () => setAssignOpen(false) });
+      updateMeal.mutate({ id: assignExistingId, recipe_id, custom_name, link, ingredients }, { onSuccess: () => setAssignOpen(false) });
     } else {
-      createMeal.mutate({ plan_date: assignDate, slot: assignSlot, recipe_id, custom_name, link }, { onSuccess: () => setAssignOpen(false) });
+      createMeal.mutate({ plan_date: assignDate, slot: assignSlot, recipe_id, custom_name, link, ingredients }, { onSuccess: () => setAssignOpen(false) });
     }
   };
 
@@ -259,16 +326,22 @@ const MealPlanning = () => {
   };
 
   const shoppingList = useMemo(() => {
-    const ingredientMap = new Map<string, number>();
+    const ingredientMap = new Map<string, Set<string>>();
     for (const meal of plannedMeals) {
+      const mealName = getMealLabel(meal);
       const recipe = recipes.find((r) => r.id === meal.recipe_id);
-      if (!recipe) continue;
-      for (const ing of recipe.ingredients) {
+      const ings: string[] = [];
+      if (recipe) ings.push(...recipe.ingredients);
+      if (meal.ingredients?.length) ings.push(...meal.ingredients);
+      for (const ing of ings) {
         const key = ing.toLowerCase();
-        ingredientMap.set(key, (ingredientMap.get(key) || 0) + 1);
+        if (!ingredientMap.has(key)) ingredientMap.set(key, new Set());
+        ingredientMap.get(key)!.add(mealName);
       }
     }
-    return Array.from(ingredientMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    return Array.from(ingredientMap.entries())
+      .map(([name, meals]) => ({ name, meals: Array.from(meals) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [plannedMeals, recipes]);
 
   const weekLabel = useMemo(() => {
@@ -378,6 +451,15 @@ const MealPlanning = () => {
                                     <BookOpen className="h-3 w-3" />
                                   </button>
                                 )}
+                                {meal.ingredients?.length ? (
+                                  <button
+                                    onClick={() => setViewRecipe({ id: meal.id, name: getMealLabel(meal), ingredients: meal.ingredients!, instructions: null, servings: 0, tags: [] })}
+                                    className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-opacity shrink-0"
+                                    title="View ingredients"
+                                  >
+                                    <List className="h-3 w-3" />
+                                  </button>
+                                ) : null}
                                 <button
                                   onClick={() => openLeftoverDialog(meal)}
                                   className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-green-600 transition-opacity shrink-0"
@@ -521,29 +603,60 @@ const MealPlanning = () => {
           <TabsContent value="shopping" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Shopping List for {weekLabel}</CardTitle>
-                <CardDescription>
-                  Auto-generated from your planned meals that have recipes assigned.
-                </CardDescription>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <CardTitle className="text-lg">Shopping List for {weekLabel}</CardTitle>
+                    <CardDescription>
+                      Auto-generated from your planned meals and recipes for the week.
+                    </CardDescription>
+                  </div>
+                  {shoppingList.length > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0 gap-1.5"
+                      disabled={exportToPantryList.isPending || !userId}
+                      onClick={() => {
+                        const unlinked = shoppingList
+                          .filter(({ name }) => !linkedIngredients.has(name))
+                          .map(({ name }) => name);
+                        if (unlinked.length > 0) exportToPantryList.mutate(unlinked);
+                        else toast({ title: "All items are already claimed from pantry" });
+                      }}
+                    >
+                      <ShoppingCart className="h-4 w-4" />
+                      Export to Shopping List
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {shoppingList.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-6">
-                    No ingredients needed — plan some meals with recipes first.
+                    No ingredients needed — plan some meals first.
                   </p>
                 ) : (
                   <ul className="space-y-1.5">
-                    {shoppingList.map(([name, count]) => (
-                      <li
-                        key={name}
-                        className="flex items-center justify-between rounded-lg border border-border px-4 py-2 text-sm"
-                      >
-                        <span className="text-foreground capitalize">{name}</span>
-                        {count > 1 && (
-                          <span className="text-xs text-muted-foreground">×{count}</span>
-                        )}
-                      </li>
-                    ))}
+                    {shoppingList.map(({ name, meals }) => {
+                      const checked = linkedIngredients.has(name);
+                      return (
+                        <li
+                          key={name}
+                          className={`flex items-center justify-between rounded-lg border px-4 py-2 text-sm cursor-pointer transition-colors ${checked ? "border-border/40 bg-muted/30 hover:bg-muted/50" : "border-border hover:bg-muted/50"}`}
+                          onClick={() => {
+                            if (checked) {
+                              const id = linkIdByIngredient.get(name);
+                              if (id != null) deleteLink.mutate(id);
+                            } else {
+                              setIngredientDialog({ ingredient: name, nav: { level: "categories" } });
+                            }
+                          }}
+                        >
+                          <span className={`capitalize ${checked ? "line-through text-muted-foreground" : "text-foreground"}`}>{name}</span>
+                          <span className="text-xs text-muted-foreground ml-3 text-right">{meals.join(", ")}</span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </CardContent>
@@ -695,6 +808,14 @@ const MealPlanning = () => {
               value={assignCustom}
               onChange={(e) => { setAssignCustom(e.target.value); setAssignRecipeId(""); }}
             />
+            {!assignRecipeId && (
+              <Textarea
+                placeholder="Ingredients (one per line, optional)"
+                rows={4}
+                value={assignIngredients}
+                onChange={(e) => setAssignIngredients(e.target.value)}
+              />
+            )}
             <Input
               placeholder="Link (optional)"
               value={assignLink}
@@ -742,6 +863,178 @@ const MealPlanning = () => {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Ingredient Pantry Lookup Dialog */}
+      <Dialog open={!!ingredientDialog} onOpenChange={(open) => { if (!open) setIngredientDialog(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="capitalize">{ingredientDialog?.ingredient}</DialogTitle>
+          </DialogHeader>
+          {ingredientDialog && (() => {
+            const nav = ingredientDialog.nav;
+
+            // ── breadcrumb / back ──────────────────────────────────────────
+            const breadcrumb = nav.level === "groups"
+              ? nav.categoryName
+              : nav.level === "items"
+              ? `${nav.categoryName}${nav.groupName ? ` / ${nav.groupName}` : ""}`
+              : null;
+
+            // ── data for each level ────────────────────────────────────────
+            // Categories that have at least one pantry item
+            const catsWithItems = categories.filter((c) =>
+              pantryItems.some((p) => p.category_id === c.id)
+            );
+            const hasUncategorized = pantryItems.some((p) => p.category_id == null);
+
+            const renderCategories = () => (
+              <ul className="space-y-1">
+                {catsWithItems.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted/60 transition-colors text-sm font-medium"
+                      onClick={() => setIngredientDialog((p) => p && ({ ...p, nav: { level: "groups", categoryId: c.id, categoryName: c.name } }))}
+                    >
+                      {c.name}
+                    </button>
+                  </li>
+                ))}
+                {hasUncategorized && (
+                  <li>
+                    <button
+                      className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted/60 transition-colors text-sm font-medium"
+                      onClick={() => setIngredientDialog((p) => p && ({ ...p, nav: { level: "groups", categoryId: null, categoryName: "Uncategorized" } }))}
+                    >
+                      Uncategorized
+                    </button>
+                  </li>
+                )}
+              </ul>
+            );
+
+            const renderGroups = () => {
+              if (nav.level !== "groups") return null;
+              const catItems = pantryItems.filter((p) => p.category_id === nav.categoryId);
+              const groupsInCat = groups.filter((g) =>
+                g.category_id === nav.categoryId && catItems.some((p) => p.group_id === g.id)
+              );
+              const hasUngrouped = catItems.some((p) => p.group_id == null);
+              return (
+                <ul className="space-y-1">
+                  {groupsInCat.map((g) => (
+                    <li key={g.id}>
+                      <button
+                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted/60 transition-colors text-sm font-medium"
+                        onClick={() => setIngredientDialog((p) => p && ({ ...p, nav: { level: "items", categoryId: nav.categoryId, categoryName: nav.categoryName, groupId: g.id, groupName: g.name } }))}
+                      >
+                        {g.name}
+                      </button>
+                    </li>
+                  ))}
+                  {hasUngrouped && (
+                    <li>
+                      <button
+                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted/60 transition-colors text-sm font-medium text-muted-foreground"
+                        onClick={() => setIngredientDialog((p) => p && ({ ...p, nav: { level: "items", categoryId: nav.categoryId, categoryName: nav.categoryName, groupId: null, groupName: "Ungrouped" } }))}
+                      >
+                        Ungrouped
+                      </button>
+                    </li>
+                  )}
+                  {groupsInCat.length === 0 && !hasUngrouped && (
+                    <p className="text-sm text-muted-foreground text-center py-4">No items in this category.</p>
+                  )}
+                </ul>
+              );
+            };
+
+            const renderItems = () => {
+              if (nav.level !== "items") return null;
+              const items = pantryItems.filter(
+                (p) => p.category_id === nav.categoryId && p.group_id === nav.groupId
+              );
+              if (items.length === 0)
+                return <p className="text-sm text-muted-foreground text-center py-4">No items here.</p>;
+              // IDs already claimed by a different ingredient
+              const claimedElsewhere = new Set(
+                Array.from(linkedIngredients.entries())
+                  .filter(([ing]) => ing !== ingredientDialog.ingredient)
+                  .map(([, id]) => id)
+              );
+              const currentlyLinkedId = linkedIngredients.get(ingredientDialog.ingredient);
+              return (
+                <ul className="space-y-1.5 max-h-72 overflow-y-auto">
+                  {items.map((item) => {
+                    const isLinkedHere = item.id === currentlyLinkedId;
+                    const isClaimed = claimedElsewhere.has(item.id);
+                    return (
+                      <li
+                        key={item.id}
+                        className={`rounded-lg border px-3 py-2 text-sm space-y-0.5 transition-colors ${isClaimed ? "border-border/40 opacity-40 cursor-not-allowed" : isLinkedHere ? "border-primary/60 bg-primary/5 cursor-pointer hover:bg-primary/10" : "border-border cursor-pointer hover:bg-muted/60"}`}
+                        onClick={() => {
+                          if (isClaimed) return;
+                          if (isLinkedHere) {
+                            const id = linkIdByIngredient.get(ingredientDialog.ingredient);
+                            if (id != null) deleteLink.mutate(id);
+                            setIngredientDialog(null);
+                          } else {
+                            const mealNames = shoppingList.find((s) => s.name === ingredientDialog.ingredient)?.meals ?? [];
+                            upsertLink.mutate({ ingredient: ingredientDialog.ingredient, pantryItemId: item.id, mealNames });
+                            setIngredientDialog(null);
+                          }
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 font-medium text-foreground">
+                            {item.name}
+                            {item.frozen && <span title="Frozen"><Snowflake className="h-3 w-3 text-blue-400" /></span>}
+                            {item.refrigerated && <span title="Refrigerated"><Refrigerator className="h-3 w-3 text-cyan-500" /></span>}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {isClaimed && <span className="text-xs text-muted-foreground">claimed</span>}
+                            {isLinkedHere && <span className="text-xs text-primary">linked ✓</span>}
+                            <span className="text-muted-foreground">{item.quantity} {item.unit}</span>
+                          </div>
+                        </div>
+                        {(item.brand || item.expiration_date) && (
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            {item.brand && <span>{item.brand}</span>}
+                            {item.expiration_date && <span>Exp: {item.expiration_date.slice(0, 10)}</span>}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              );
+            };
+
+            return (
+              <div className="space-y-3">
+                {breadcrumb && (
+                  <button
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => {
+                      if (nav.level === "groups") {
+                        setIngredientDialog((p) => p && ({ ...p, nav: { level: "categories" } }));
+                      } else if (nav.level === "items") {
+                        setIngredientDialog((p) => p && ({ ...p, nav: { level: "groups", categoryId: nav.categoryId, categoryName: nav.categoryName } }));
+                      }
+                    }}
+                  >
+                    <ChevronLeft className="h-3 w-3" /> {breadcrumb}
+                  </button>
+                )}
+                <div className="max-h-72 overflow-y-auto">
+                  {nav.level === "categories" && renderCategories()}
+                  {nav.level === "groups" && renderGroups()}
+                  {nav.level === "items" && renderItems()}
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

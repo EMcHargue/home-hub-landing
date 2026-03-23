@@ -46,6 +46,15 @@ export type ApiPlannedMeal = {
   recipe_id: number | null;
   custom_name: string | null;
   link: string | null;
+  ingredients: string[] | null;
+};
+
+export type ApiShoppingListLink = {
+  id: number;
+  week_start: string;
+  ingredient_name: string;
+  pantry_item_id: number;
+  meal_names: string[];
 };
 
 export type ApiShoppingItem = {
@@ -208,22 +217,40 @@ export const api = {
   getPlannedMeals: (start: string, end: string) =>
     fetch(`${BASE}/planned-meals?start=${start}&end=${end}`).then((r) => json<ApiPlannedMeal[]>(r)),
 
-  createPlannedMeal: (plan_date: string, slot: string, recipe_id: number | null, custom_name: string | null, link: string | null) =>
+  createPlannedMeal: (plan_date: string, slot: string, recipe_id: number | null, custom_name: string | null, link: string | null, ingredients: string[] | null) =>
     fetch(`${BASE}/planned-meals`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan_date, slot, recipe_id, custom_name, link }),
+      body: JSON.stringify({ plan_date, slot, recipe_id, custom_name, link, ingredients }),
     }).then((r) => json<{ id: number }>(r)),
 
-  updatePlannedMeal: (id: number, recipe_id: number | null, custom_name: string | null, link: string | null) =>
+  updatePlannedMeal: (id: number, recipe_id: number | null, custom_name: string | null, link: string | null, ingredients: string[] | null) =>
     fetch(`${BASE}/planned-meals/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recipe_id, custom_name, link }),
+      body: JSON.stringify({ recipe_id, custom_name, link, ingredients }),
     }).then((r) => json<{ success: boolean }>(r)),
 
   deletePlannedMeal: (id: number) =>
     fetch(`${BASE}/planned-meals/${id}`, { method: "DELETE" }).then((r) => json<{ success: boolean }>(r)),
+
+  // ── Shopping list links ─────────────────────────────────────────────────────
+  getShoppingListLinks: (week_start?: string) =>
+    fetch(`${BASE}/shopping-list-links${week_start ? `?week_start=${week_start}` : ""}`).then((r) =>
+      json<ApiShoppingListLink[]>(r)
+    ),
+
+  upsertShoppingListLink: (week_start: string, ingredient_name: string, pantry_item_id: number, meal_names: string[]) =>
+    fetch(`${BASE}/shopping-list-links`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ week_start, ingredient_name, pantry_item_id, meal_names }),
+    }).then((r) => json<{ id: number }>(r)),
+
+  deleteShoppingListLink: (id: number) =>
+    fetch(`${BASE}/shopping-list-links/${id}`, { method: "DELETE" }).then((r) =>
+      json<{ success: boolean }>(r)
+    ),
 
   // ── User bootstrap ─────────────────────────────────────────────────────────
   getOrCreateUserId: async (): Promise<string> => {

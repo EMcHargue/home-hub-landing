@@ -9,6 +9,7 @@ import shoppingRouter from "./routes/shopping";
 import membersRouter from "./routes/members";
 import recipesRouter from "./routes/recipes";
 import plannedMealsRouter from "./routes/planned-meals";
+import shoppingListLinksRouter from "./routes/shopping-list-links";
 
 const app = express();
 app.use(cors());
@@ -22,6 +23,7 @@ app.use("/api/shopping", shoppingRouter);
 app.use("/api/members", membersRouter);
 app.use("/api/recipes", recipesRouter);
 app.use("/api/planned-meals", plannedMealsRouter);
+app.use("/api/shopping-list-links", shoppingListLinksRouter);
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
