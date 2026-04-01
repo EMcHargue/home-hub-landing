@@ -1,0 +1,11 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "DB_SERVER": "home-hub-sql-srv.database.windows.net",
+    "DB_NAME": "home-hub-db",
+    "DB_USER": "homehubadmin",
+    "DB_PASSWORD": "MAivfbie2h01bnam!"
+  }
+}
