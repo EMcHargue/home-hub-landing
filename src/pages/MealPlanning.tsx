@@ -36,6 +36,7 @@ import {
   Snowflake,
   Refrigerator,
   List,
+  CalendarDays,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { api, ApiRecipe, ApiPlannedMeal } from "@/lib/api";
@@ -60,12 +61,329 @@ function fmt(d: Date) {
 }
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAY_NAMES_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner"];
 const SLOT_LABELS: Record<MealSlot, string> = {
   breakfast: "Breakfast",
   lunch: "Lunch",
   dinner: "Dinner",
 };
+
+/* ─── Mobile Day View ─── */
+function MobileDayView({
+  weekDates,
+  plannedMeals,
+  recipes,
+  openAssign,
+  openLeftoverDialog,
+  deleteMeal,
+  setFocusedRecipeId,
+  setActiveTab,
+  setViewRecipe,
+}: {
+  weekDates: Date[];
+  plannedMeals: ApiPlannedMeal[];
+  recipes: ApiRecipe[];
+  openAssign: (date: string, slot: MealSlot, existing?: ApiPlannedMeal) => void;
+  openLeftoverDialog: (meal: ApiPlannedMeal) => void;
+  deleteMeal: { mutate: (id: number) => void };
+  setFocusedRecipeId: (id: number | null) => void;
+  setActiveTab: (tab: string) => void;
+  setViewRecipe: (r: ApiRecipe | null) => void;
+}) {
+  const todayStr = fmt(new Date());
+  const todayIndex = weekDates.findIndex((d) => fmt(d) === todayStr);
+  const [dayIndex, setDayIndex] = useState(todayIndex >= 0 ? todayIndex : 0);
+
+  const date = weekDates[dayIndex];
+  const dateStr = fmt(date);
+  const isToday = dateStr === todayStr;
+
+  const getSlotMeals = (slot: MealSlot): ApiPlannedMeal[] =>
+    plannedMeals.filter((m) => m.plan_date.slice(0, 10) === dateStr && m.slot === slot);
+
+  const getMealLabel = (meal: ApiPlannedMeal) => {
+    if (meal.custom_name) return meal.custom_name;
+    return recipes.find((r) => r.id === meal.recipe_id)?.name ?? "Unknown";
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Day navigator */}
+      <div className="flex items-center justify-between">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setDayIndex((i) => Math.max(0, i - 1))}
+          disabled={dayIndex === 0}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+
+        <div className="text-center">
+          <p className={`text-lg font-bold ${isToday ? "text-primary" : "text-foreground"}`}>
+            {DAY_NAMES_FULL[date.getDay()]}
+            {isToday && <span className="ml-2 text-xs font-normal bg-primary/10 text-primary px-2 py-0.5 rounded-full">Today</span>}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {date.toLocaleDateString(undefined, { month: "long", day: "numeric" })}
+          </p>
+        </div>
+
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setDayIndex((i) => Math.min(6, i + 1))}
+          disabled={dayIndex === 6}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* Day dots */}
+      <div className="flex justify-center gap-2">
+        {weekDates.map((d, i) => {
+          const dStr = fmt(d);
+          const isT = dStr === todayStr;
+          return (
+            <button
+              key={dStr}
+              onClick={() => setDayIndex(i)}
+              className={`flex flex-col items-center gap-1 px-2 py-1 rounded-lg transition-colors ${i === dayIndex ? "bg-primary/10" : "hover:bg-muted/60"}`}
+            >
+              <span className="text-[10px] text-muted-foreground">{DAY_NAMES[d.getDay()]}</span>
+              <span className={`text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full ${isT ? "bg-primary text-primary-foreground" : i === dayIndex ? "text-primary" : "text-foreground"}`}>
+                {d.getDate()}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Meal slots */}
+      <div className="space-y-3">
+        {SLOTS.map((slot) => {
+          const meals = getSlotMeals(slot);
+          return (
+            <Card key={slot}>
+              <CardHeader className="pb-2 pt-4 px-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {SLOT_LABELS[slot]}
+                </p>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 space-y-2">
+                {meals.map((meal) => (
+                  <div key={meal.id} className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2">
+                    {meal.link ? (
+                      <a
+                        href={meal.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary underline truncate flex-1"
+                      >
+                        {getMealLabel(meal)}
+                      </a>
+                    ) : (
+                      <button
+                        onClick={() => openAssign(dateStr, slot, meal)}
+                        className="text-sm text-foreground truncate flex-1 text-left"
+                      >
+                        {getMealLabel(meal)}
+                      </button>
+                    )}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => openAssign(dateStr, slot, meal)}
+                        className="text-muted-foreground hover:text-primary transition-colors p-1"
+                        title="Edit"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      {meal.recipe_id != null && (
+                        <button
+                          onClick={() => {
+                            const r = recipes.find((x) => x.id === meal.recipe_id);
+                            setFocusedRecipeId(meal.recipe_id!);
+                            setActiveTab("recipes");
+                            if (r) setViewRecipe(r);
+                          }}
+                          className="text-muted-foreground hover:text-primary transition-colors p-1"
+                          title="View recipe"
+                        >
+                          <BookOpen className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {meal.ingredients?.length ? (
+                        <button
+                          onClick={() => setViewRecipe({ id: meal.id, name: getMealLabel(meal), ingredients: meal.ingredients!, instructions: null, servings: 0, tags: [] })}
+                          className="text-muted-foreground hover:text-primary transition-colors p-1"
+                          title="View ingredients"
+                        >
+                          <List className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
+                      <button
+                        onClick={() => openLeftoverDialog(meal)}
+                        className="text-muted-foreground hover:text-green-600 transition-colors p-1"
+                        title="Save as leftover"
+                      >
+                        <Archive className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => deleteMeal.mutate(meal.id)}
+                        className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={() => openAssign(dateStr, slot)}
+                  className="w-full text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-1.5 py-1"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add meal
+                </button>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Desktop Week View ─── */
+function DesktopWeekView({
+  weekDates,
+  plannedMeals,
+  recipes,
+  openAssign,
+  openLeftoverDialog,
+  deleteMeal,
+  setFocusedRecipeId,
+  setActiveTab,
+  setViewRecipe,
+}: {
+  weekDates: Date[];
+  plannedMeals: ApiPlannedMeal[];
+  recipes: ApiRecipe[];
+  openAssign: (date: string, slot: MealSlot, existing?: ApiPlannedMeal) => void;
+  openLeftoverDialog: (meal: ApiPlannedMeal) => void;
+  deleteMeal: { mutate: (id: number) => void };
+  setFocusedRecipeId: (id: number | null) => void;
+  setActiveTab: (tab: string) => void;
+  setViewRecipe: (r: ApiRecipe | null) => void;
+}) {
+  const todayStr = fmt(new Date());
+
+  const getSlotMeals = (date: string, slot: MealSlot): ApiPlannedMeal[] =>
+    plannedMeals.filter((m) => m.plan_date.slice(0, 10) === date && m.slot === slot);
+
+  const getMealLabel = (meal: ApiPlannedMeal) => {
+    if (meal.custom_name) return meal.custom_name;
+    return recipes.find((r) => r.id === meal.recipe_id)?.name ?? "Unknown";
+  };
+
+  return (
+    <div className="grid grid-cols-7 gap-2">
+      {weekDates.map((date) => {
+        const dateStr = fmt(date);
+        const isToday = todayStr === dateStr;
+        return (
+          <Card
+            key={dateStr}
+            className={`min-h-[180px] transition-shadow ${isToday ? "ring-2 ring-primary/40" : ""}`}
+          >
+            <CardHeader className="p-3 pb-1">
+              <p className="text-xs font-semibold text-muted-foreground">{DAY_NAMES[date.getDay()]}</p>
+              <p className={`text-sm font-bold ${isToday ? "text-primary" : "text-foreground"}`}>
+                {date.getDate()}
+              </p>
+            </CardHeader>
+            <CardContent className="p-3 pt-0 space-y-1.5">
+              {SLOTS.map((slot) => {
+                const meals = getSlotMeals(dateStr, slot);
+                return (
+                  <div key={slot}>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {SLOT_LABELS[slot]}
+                    </p>
+                    {meals.map((meal) => (
+                      <div key={meal.id} className="flex items-center gap-1 group">
+                        {meal.link ? (
+                          <a
+                            href={meal.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-primary underline truncate flex-1 hover:text-primary/80 transition-colors"
+                          >
+                            {getMealLabel(meal)}
+                          </a>
+                        ) : (
+                          <button
+                            onClick={() => openAssign(dateStr, slot, meal)}
+                            className="text-xs text-foreground truncate flex-1 text-left hover:text-primary transition-colors"
+                          >
+                            {getMealLabel(meal)}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => openAssign(dateStr, slot, meal)}
+                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-opacity shrink-0"
+                          title="Edit"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                        {meal.recipe_id != null && (
+                          <button
+                            onClick={() => { const r = recipes.find((x) => x.id === meal.recipe_id); setFocusedRecipeId(meal.recipe_id!); setActiveTab("recipes"); if (r) setViewRecipe(r); }}
+                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-opacity shrink-0"
+                            title="View recipe"
+                          >
+                            <BookOpen className="h-3 w-3" />
+                          </button>
+                        )}
+                        {meal.ingredients?.length ? (
+                          <button
+                            onClick={() => setViewRecipe({ id: meal.id, name: getMealLabel(meal), ingredients: meal.ingredients!, instructions: null, servings: 0, tags: [] })}
+                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-opacity shrink-0"
+                            title="View ingredients"
+                          >
+                            <List className="h-3 w-3" />
+                          </button>
+                        ) : null}
+                        <button
+                          onClick={() => openLeftoverDialog(meal)}
+                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-green-600 transition-opacity shrink-0"
+                          title="Save as leftover"
+                        >
+                          <Archive className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={() => deleteMeal.mutate(meal.id)}
+                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => openAssign(dateStr, slot)}
+                      className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      + add
+                    </button>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
 
 /* ─── Page ─── */
 const MealPlanning = () => {
@@ -229,12 +547,10 @@ const MealPlanning = () => {
     queryKey: ["shopping-list-links", weekStart],
     queryFn: () => api.getShoppingListLinks(weekStart),
   });
-  // ingredient name → pantry item id
   const linkedIngredients = useMemo(
     () => new Map<string, number>(shoppingListLinks.map((l) => [l.ingredient_name, l.pantry_item_id])),
     [shoppingListLinks]
   );
-  // ingredient name → link row id (needed for deletes)
   const linkIdByIngredient = useMemo(
     () => new Map<string, number>(shoppingListLinks.map((l) => [l.ingredient_name, l.id])),
     [shoppingListLinks]
@@ -274,6 +590,7 @@ const MealPlanning = () => {
     },
     onError: (err) => toast({ title: "Failed to export", description: String(err), variant: "destructive" }),
   });
+
   type PantryNav =
     | { level: "categories" }
     | { level: "groups"; categoryId: number | null; categoryName: string }
@@ -317,9 +634,6 @@ const MealPlanning = () => {
   };
 
   // ── Derived ───────────────────────────────────────────────────────────────
-  const getSlotMeals = (date: string, slot: MealSlot): ApiPlannedMeal[] =>
-    plannedMeals.filter((m) => m.plan_date.slice(0, 10) === date && m.slot === slot);
-
   const getMealLabel = (meal: ApiPlannedMeal) => {
     if (meal.custom_name) return meal.custom_name;
     return recipes.find((r) => r.id === meal.recipe_id)?.name ?? "Unknown";
@@ -349,11 +663,23 @@ const MealPlanning = () => {
     return `${weekDates[0].toLocaleDateString(undefined, opts)} – ${weekDates[6].toLocaleDateString(undefined, opts)}`;
   }, [weekDates]);
 
+  const sharedCalendarProps = {
+    weekDates,
+    plannedMeals,
+    recipes,
+    openAssign,
+    openLeftoverDialog,
+    deleteMeal,
+    setFocusedRecipeId,
+    setActiveTab,
+    setViewRecipe,
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b bg-card">
-        <div className="container mx-auto flex items-center gap-4 px-6 py-4">
+        <div className="container mx-auto flex items-center gap-4 px-4 sm:px-6 py-4">
           <Button variant="ghost" size="icon" asChild>
             <Link to="/dashboard">
               <ArrowLeft className="h-5 w-5" />
@@ -361,133 +687,58 @@ const MealPlanning = () => {
           </Button>
           <div>
             <h1 className="font-serif text-2xl font-bold text-foreground">Meal Planning</h1>
-            <p className="text-sm text-muted-foreground">Plan your weekly meals, save recipes, and auto-generate a shopping list.</p>
+            <p className="text-sm text-muted-foreground hidden sm:block">Plan your weekly meals, save recipes, and auto-generate a shopping list.</p>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-10 space-y-8">
-
+      <main className="container mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-6 sm:space-y-8">
         <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); if (v !== "recipes") setFocusedRecipeId(null); }} className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="calendar" className="gap-1.5">
-              <UtensilsCrossed className="h-4 w-4" /> Weekly Plan
+          <TabsList className="w-full sm:w-auto">
+            <TabsTrigger value="calendar" className="gap-1.5 flex-1 sm:flex-none">
+              <UtensilsCrossed className="h-4 w-4" />
+              <span className="hidden sm:inline">Weekly Plan</span>
+              <span className="sm:hidden">Plan</span>
             </TabsTrigger>
-            <TabsTrigger value="recipes" className="gap-1.5">
-              <BookOpen className="h-4 w-4" /> Recipes
+            <TabsTrigger value="recipes" className="gap-1.5 flex-1 sm:flex-none">
+              <BookOpen className="h-4 w-4" />
+              Recipes
             </TabsTrigger>
-            <TabsTrigger value="shopping" className="gap-1.5">
-              <ShoppingCart className="h-4 w-4" /> Shopping List
+            <TabsTrigger value="shopping" className="gap-1.5 flex-1 sm:flex-none">
+              <ShoppingCart className="h-4 w-4" />
+              <span className="hidden sm:inline">Shopping List</span>
+              <span className="sm:hidden">Shopping</span>
             </TabsTrigger>
           </TabsList>
 
           {/* ─── WEEKLY CALENDAR ─── */}
           <TabsContent value="calendar" className="space-y-4">
+            {/* Week navigator */}
             <div className="flex items-center justify-between">
               <Button variant="outline" size="sm" onClick={() => setWeekOffset((o) => o - 1)}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <span className="font-medium text-foreground">{weekLabel}</span>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-foreground text-sm sm:text-base">{weekLabel}</span>
+                {weekOffset !== 0 && (
+                  <Button variant="ghost" size="sm" onClick={() => setWeekOffset(0)} className="text-xs gap-1 text-muted-foreground hover:text-foreground">
+                    <CalendarDays className="h-3.5 w-3.5" /> Today
+                  </Button>
+                )}
+              </div>
               <Button variant="outline" size="sm" onClick={() => setWeekOffset((o) => o + 1)}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
 
-            <div className="grid grid-cols-7 gap-2">
-              {weekDates.map((date) => {
-                const dateStr = fmt(date);
-                const isToday = fmt(new Date()) === dateStr;
-                return (
-                  <Card
-                    key={dateStr}
-                    className={`min-h-[180px] transition-shadow ${isToday ? "ring-2 ring-primary/40" : ""}`}
-                  >
-                    <CardHeader className="p-3 pb-1">
-                      <p className="text-xs font-semibold text-muted-foreground">{DAY_NAMES[date.getDay()]}</p>
-                      <p className={`text-sm font-bold ${isToday ? "text-primary" : "text-foreground"}`}>
-                        {date.getDate()}
-                      </p>
-                    </CardHeader>
-                    <CardContent className="p-3 pt-0 space-y-1.5">
-                      {SLOTS.map((slot) => {
-                        const meals = getSlotMeals(dateStr, slot);
-                        return (
-                          <div key={slot}>
-                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                              {SLOT_LABELS[slot]}
-                            </p>
-                            {meals.map((meal) => (
-                              <div key={meal.id} className="flex items-center gap-1 group">
-                                {meal.link ? (
-                                  <a
-                                    href={meal.link}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-xs text-primary underline truncate flex-1 hover:text-primary/80 transition-colors"
-                                  >
-                                    {getMealLabel(meal)}
-                                  </a>
-                                ) : (
-                                  <button
-                                    onClick={() => openAssign(dateStr, slot, meal)}
-                                    className="text-xs text-foreground truncate flex-1 text-left hover:text-primary transition-colors"
-                                  >
-                                    {getMealLabel(meal)}
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => openAssign(dateStr, slot, meal)}
-                                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-opacity shrink-0"
-                                  title="Edit"
-                                >
-                                  <Pencil className="h-3 w-3" />
-                                </button>
-                                {meal.recipe_id != null && (
-                                  <button
-                                    onClick={() => { const r = recipes.find((x) => x.id === meal.recipe_id); setFocusedRecipeId(meal.recipe_id!); setActiveTab("recipes"); if (r) setViewRecipe(r); }}
-                                    className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-opacity shrink-0"
-                                    title="View recipe"
-                                  >
-                                    <BookOpen className="h-3 w-3" />
-                                  </button>
-                                )}
-                                {meal.ingredients?.length ? (
-                                  <button
-                                    onClick={() => setViewRecipe({ id: meal.id, name: getMealLabel(meal), ingredients: meal.ingredients!, instructions: null, servings: 0, tags: [] })}
-                                    className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-opacity shrink-0"
-                                    title="View ingredients"
-                                  >
-                                    <List className="h-3 w-3" />
-                                  </button>
-                                ) : null}
-                                <button
-                                  onClick={() => openLeftoverDialog(meal)}
-                                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-green-600 transition-opacity shrink-0"
-                                  title="Save as leftover"
-                                >
-                                  <Archive className="h-3 w-3" />
-                                </button>
-                                <button
-                                  onClick={() => deleteMeal.mutate(meal.id)}
-                                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0"
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
-                              </div>
-                            ))}
-                            <button
-                              onClick={() => openAssign(dateStr, slot)}
-                              className="text-xs text-muted-foreground hover:text-primary transition-colors"
-                            >
-                              + add
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </CardContent>
-                  </Card>
-                );
-              })}
+            {/* Mobile: single day view */}
+            <div className="sm:hidden">
+              <MobileDayView {...sharedCalendarProps} />
+            </div>
+
+            {/* Desktop: full week grid */}
+            <div className="hidden sm:block">
+              <DesktopWeekView {...sharedCalendarProps} />
             </div>
           </TabsContent>
 
@@ -625,7 +876,8 @@ const MealPlanning = () => {
                       }}
                     >
                       <ShoppingCart className="h-4 w-4" />
-                      Export to Shopping List
+                      <span className="hidden sm:inline">Export to Shopping List</span>
+                      <span className="sm:hidden">Export</span>
                     </Button>
                   )}
                 </div>
@@ -875,15 +1127,12 @@ const MealPlanning = () => {
           {ingredientDialog && (() => {
             const nav = ingredientDialog.nav;
 
-            // ── breadcrumb / back ──────────────────────────────────────────
             const breadcrumb = nav.level === "groups"
               ? nav.categoryName
               : nav.level === "items"
               ? `${nav.categoryName}${nav.groupName ? ` / ${nav.groupName}` : ""}`
               : null;
 
-            // ── data for each level ────────────────────────────────────────
-            // Categories that have at least one pantry item
             const catsWithItems = categories.filter((c) =>
               pantryItems.some((p) => p.category_id === c.id)
             );
@@ -957,7 +1206,6 @@ const MealPlanning = () => {
               );
               if (items.length === 0)
                 return <p className="text-sm text-muted-foreground text-center py-4">No items here.</p>;
-              // IDs already claimed by a different ingredient
               const claimedElsewhere = new Set(
                 Array.from(linkedIngredients.entries())
                   .filter(([ing]) => ing !== ingredientDialog.ingredient)
