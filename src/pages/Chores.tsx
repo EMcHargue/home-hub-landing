@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  ArrowLeft, Plus, Search, Trash2, Users, CheckCircle2, Clock, CalendarDays, RotateCcw, ClipboardList,
+  ArrowLeft, Plus, Search, Trash2, Users, CheckCircle2, Clock, CalendarDays, RotateCcw, ClipboardList, Pencil,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { api, ApiMember } from "@/lib/api";
@@ -47,6 +47,10 @@ const Chores = () => {
   const [taskOpen, setTaskOpen] = useState(false);
   const [choreForm, setChoreForm] = useState(BLANK_CHORE);
   const [taskForm, setTaskForm] = useState(BLANK_TASK);
+  const [editChore, setEditChore] = useState<Chore | null>(null);
+  const [editTask, setEditTask] = useState<Task | null>(null);
+  const [editChoreForm, setEditChoreForm] = useState(BLANK_CHORE);
+  const [editTaskForm, setEditTaskForm] = useState(BLANK_TASK);
 
   function getNextDueDate(currentDue: string | null, freq: RecurrenceFrequency): string | null {
     const base = currentDue ? new Date(currentDue) : new Date();
@@ -85,6 +89,29 @@ const Chores = () => {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["chores"] }); toast({ title: "Chore deleted" }); },
   });
 
+  const openEditChore = (chore: Chore) => {
+    setEditChoreForm({
+      title: chore.title,
+      description: chore.description ?? "",
+      assigneeId: chore.assignee_id ?? "unassigned",
+      dueDate: chore.due_date ?? "",
+      recurrence: chore.recurrence,
+    });
+    setEditChore(chore);
+  };
+
+  const saveEditChore = () => {
+    if (!editChore || !editChoreForm.title.trim()) return;
+    updateChoreMutation.mutate({
+      id: editChore.id,
+      title: editChoreForm.title.trim(),
+      description: editChoreForm.description.trim() || null,
+      assignee_id: editChoreForm.assigneeId === "unassigned" ? null : editChoreForm.assigneeId,
+      due_date: editChoreForm.dueDate || null,
+      recurrence: editChoreForm.recurrence,
+    }, { onSuccess: () => setEditChore(null) });
+  };
+
   const addChore = () => {
     if (!choreForm.title.trim()) { toast({ title: "Chore title is required", variant: "destructive" }); return; }
     createChoreMutation.mutate({
@@ -121,6 +148,27 @@ const Chores = () => {
     mutationFn: (id: string) => fetch(`/api/tasks/${id}`, { method: "DELETE" }).then((r) => r.json()),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tasks"] }); toast({ title: "Task deleted" }); },
   });
+
+  const openEditTask = (task: Task) => {
+    setEditTaskForm({
+      title: task.title,
+      description: task.description ?? "",
+      assigneeId: task.assignee_id ?? "unassigned",
+      dueDate: task.due_date ?? "",
+    });
+    setEditTask(task);
+  };
+
+  const saveEditTask = () => {
+    if (!editTask || !editTaskForm.title.trim()) return;
+    updateTaskMutation.mutate({
+      id: editTask.id,
+      title: editTaskForm.title.trim(),
+      description: editTaskForm.description.trim() || null,
+      assignee_id: editTaskForm.assigneeId === "unassigned" ? null : editTaskForm.assigneeId,
+      due_date: editTaskForm.dueDate || null,
+    }, { onSuccess: () => setEditTask(null) });
+  };
 
   const addTask = () => {
     if (!taskForm.title.trim()) { toast({ title: "Task title is required", variant: "destructive" }); return; }
@@ -191,9 +239,14 @@ const Chores = () => {
             {chore.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{new Date(chore.due_date).toLocaleDateString()}</span>}
           </div>
         </div>
-        <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive" onClick={() => deleteChoreMutation.mutate(chore.id)}>
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1 shrink-0">
+          <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-primary" onClick={() => openEditChore(chore)}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive" onClick={() => deleteChoreMutation.mutate(chore.id)}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -213,9 +266,14 @@ const Chores = () => {
             {task.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{new Date(task.due_date).toLocaleDateString()}</span>}
           </div>
         </div>
-        <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive" onClick={() => deleteTaskMutation.mutate(task.id)}>
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1 shrink-0">
+          <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-primary" onClick={() => openEditTask(task)}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive" onClick={() => deleteTaskMutation.mutate(task.id)}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -420,6 +478,77 @@ const Chores = () => {
           </TabsContent>
         </Tabs>
       </main>
+      
+      {/* Edit Chore Dialog */}
+      <Dialog open={!!editChore} onOpenChange={(open) => { if (!open) setEditChore(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Chore</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5"><Label>Title *</Label>
+              <Input value={editChoreForm.title} onChange={(e) => setEditChoreForm((f) => ({ ...f, title: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5"><Label>Description</Label>
+              <Input value={editChoreForm.description} onChange={(e) => setEditChoreForm((f) => ({ ...f, description: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5"><Label>Assign to</Label>
+                <Select value={editChoreForm.assigneeId} onValueChange={(v) => setEditChoreForm((f) => ({ ...f, assigneeId: v }))}>
+                  <SelectTrigger><span>{editChoreForm.assigneeId === "unassigned" ? "Unassigned" : getMemberName(editChoreForm.assigneeId)}</span></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                    {members.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5"><Label>Recurrence</Label>
+                <Select value={editChoreForm.recurrence} onValueChange={(v) => setEditChoreForm((f) => ({ ...f, recurrence: v as RecurrenceFrequency }))}>
+                  <SelectTrigger><span className="capitalize">{editChoreForm.recurrence === "none" ? "One-time" : editChoreForm.recurrence}</span></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">One-time</SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5"><Label>Due date</Label>
+              <Input type="date" value={editChoreForm.dueDate} onChange={(e) => setEditChoreForm((f) => ({ ...f, dueDate: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter><Button onClick={saveEditChore} disabled={updateChoreMutation.isPending}>Save</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Task Dialog */}
+      <Dialog open={!!editTask} onOpenChange={(open) => { if (!open) setEditTask(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Task</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5"><Label>Title *</Label>
+              <Input value={editTaskForm.title} onChange={(e) => setEditTaskForm((f) => ({ ...f, title: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5"><Label>Description</Label>
+              <Input value={editTaskForm.description} onChange={(e) => setEditTaskForm((f) => ({ ...f, description: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5"><Label>Assign to</Label>
+                <Select value={editTaskForm.assigneeId} onValueChange={(v) => setEditTaskForm((f) => ({ ...f, assigneeId: v }))}>
+                  <SelectTrigger><span>{editTaskForm.assigneeId === "unassigned" ? "Unassigned" : getMemberName(editTaskForm.assigneeId)}</span></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                    {members.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5"><Label>Due date</Label>
+                <Input type="date" value={editTaskForm.dueDate} onChange={(e) => setEditTaskForm((f) => ({ ...f, dueDate: e.target.value }))} />
+              </div>
+            </div>
+          </div>
+          <DialogFooter><Button onClick={saveEditTask} disabled={updateTaskMutation.isPending}>Save</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
