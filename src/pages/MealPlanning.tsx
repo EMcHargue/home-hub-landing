@@ -426,6 +426,15 @@ const MealPlanning = () => {
     [categories]
   );
 
+  // Auto-create "Leftovers" category if it doesn't exist
+  useEffect(() => {
+    if (categories.length > 0 && leftoversCategoryId === null) {
+      api.createCategory("Leftovers").then(() => {
+        qc.invalidateQueries({ queryKey: ["categories"] });
+      }).catch(() => {});
+    }
+  }, [categories, leftoversCategoryId]);
+
   const { data: pantryItems = [] } = useQuery({
     queryKey: ["pantry"],
     queryFn: () => api.getPantry(),
