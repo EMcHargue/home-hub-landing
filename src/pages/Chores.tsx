@@ -94,7 +94,7 @@ const Chores = () => {
       title: chore.title,
       description: chore.description ?? "",
       assigneeId: chore.assignee_id ?? "unassigned",
-      dueDate: chore.due_date ?? "",
+      dueDate: chore.due_date ? chore.due_date.slice(0, 10) : "",
       recurrence: chore.recurrence,
     });
     setEditChore(chore);
@@ -154,7 +154,7 @@ const Chores = () => {
       title: task.title,
       description: task.description ?? "",
       assigneeId: task.assignee_id ?? "unassigned",
-      dueDate: task.due_date ?? "",
+      dueDate: task.due_date ? task.due_date.slice(0, 10) : "",
     });
     setEditTask(task);
   };
@@ -236,7 +236,7 @@ const Chores = () => {
           {chore.description && <p className="mt-0.5 text-sm text-muted-foreground truncate">{chore.description}</p>}
           <div className="mt-1.5 flex items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1"><Users className="h-3 w-3" />{getMemberName(chore.assignee_id)}</span>
-            {chore.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{new Date(chore.due_date).toLocaleDateString()}</span>}
+            {chore.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{new Date(chore.due_date + "T00:00:00").toLocaleDateString()}
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -263,7 +263,7 @@ const Chores = () => {
           {task.description && <p className="mt-0.5 text-sm text-muted-foreground truncate">{task.description}</p>}
           <div className="mt-1.5 flex items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1"><Users className="h-3 w-3" />{getMemberName(task.assignee_id)}</span>
-            {task.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{new Date(task.due_date).toLocaleDateString()}</span>}
+            {task.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{new Date(task.due_date + "T00:00:00").toLocaleDateString()}</span>}
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -478,7 +478,7 @@ const Chores = () => {
           </TabsContent>
         </Tabs>
       </main>
-      
+
       {/* Edit Chore Dialog */}
       <Dialog open={!!editChore} onOpenChange={(open) => { if (!open) setEditChore(null); }}>
         <DialogContent>
