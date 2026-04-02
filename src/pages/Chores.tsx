@@ -236,7 +236,7 @@ const Chores = () => {
           {chore.description && <p className="mt-0.5 text-sm text-muted-foreground truncate">{chore.description}</p>}
           <div className="mt-1.5 flex items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1"><Users className="h-3 w-3" />{getMemberName(chore.assignee_id)}</span>
-            {chore.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{new Date(chore.due_date + "T00:00:00").toLocaleDateString()}</span>}
+            {chore.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{new Date(chore.due_date.trim() + "T12:00:00").toLocaleDateString()}</span>}
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -263,7 +263,7 @@ const Chores = () => {
           {task.description && <p className="mt-0.5 text-sm text-muted-foreground truncate">{task.description}</p>}
           <div className="mt-1.5 flex items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1"><Users className="h-3 w-3" />{getMemberName(task.assignee_id)}</span>
-            {task.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{new Date(task.due_date + "T00:00:00").toLocaleDateString()}</span>}
+            {task.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{new Date(task.due_date.trim() + "T12:00:00").toLocaleDateString()}</span>}
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -286,7 +286,7 @@ const Chores = () => {
           <span className="font-medium text-muted-foreground line-through">{item.title}</span>
           <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
             <span>{getMemberName(item.assignee_id)}</span>
-            {item.completed_at && <span>Completed {new Date(item.completed_at).toLocaleDateString()}</span>}
+            {item.completed_at && <span>Completed {new Date(item.completed_at.trim() + "T12:00:00").toLocaleDateString()}</span>}
           </div>
         </div>
         <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive"
