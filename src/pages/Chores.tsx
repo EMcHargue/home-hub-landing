@@ -236,7 +236,7 @@ const Chores = () => {
           {chore.description && <p className="mt-0.5 text-sm text-muted-foreground truncate">{chore.description}</p>}
           <div className="mt-1.5 flex items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1"><Users className="h-3 w-3" />{getMemberName(chore.assignee_id)}</span>
-            {chore.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{new Date(chore.due_date + "T00:00:00").toLocaleDateString()}
+            {chore.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{new Date(chore.due_date + "T00:00:00").toLocaleDateString()}</span>}
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
