@@ -5,10 +5,10 @@ dotenv.config();
 
 // configure via environment variables
 const config = {
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  server: process.env.DB_SERVER,
-  database: process.env.DB_NAME,
+  user: process.env.DB_USER || "",
+  password: process.env.DB_PASSWORD || "",
+  server: process.env.DB_SERVER || "",
+  database: process.env.DB_NAME || "",
   options: {
     encrypt: true, // for Azure, set false for local dev if needed
     trustServerCertificate: true,

@@ -131,23 +131,45 @@ const Chores = () => {
     }, { onSuccess: () => { setTaskForm(BLANK_TASK); setTaskOpen(false); } });
   };
 
+  const today = new Date().toISOString().slice(0, 10);
+
   const filterItem = (item: { title: string; description: string | null; assignee_id: string | null }) =>
     (!search || item.title.toLowerCase().includes(search.toLowerCase()) || (item.description ?? "").toLowerCase().includes(search.toLowerCase())) &&
     (filterAssignee === "all" || (filterAssignee === "unassigned" ? item.assignee_id === null : item.assignee_id === filterAssignee));
 
-  const sortByDue = (a: { due_date: string | null; created_at: string }, b: { due_date: string | null; created_at: string }) => {
-    if (a.due_date && !b.due_date) return -1;
-    if (!a.due_date && b.due_date) return 1;
-    if (a.due_date && b.due_date) return a.due_date.localeCompare(b.due_date);
-    return b.created_at.localeCompare(a.created_at);
-  };
+  const isArchived = (item: { completed: boolean; due_date: string | null }) =>
+    item.completed && (!item.due_date || item.due_date < today);
 
-  const activeChores = useMemo(() => chores.filter((c) => !c.completed && filterItem(c)).sort(sortByDue), [chores, search, filterAssignee]);
-  const completedChores = useMemo(() => chores.filter((c) => c.completed).sort((a, b) => new Date(b.completed_at!).getTime() - new Date(a.completed_at!).getTime()), [chores]);
-  const activeTasks = useMemo(() => tasks.filter((t) => !t.completed && filterItem(t)).sort(sortByDue), [tasks, search, filterAssignee]);
-  const completedTasks = useMemo(() => tasks.filter((t) => t.completed).sort((a, b) => new Date(b.completed_at!).getTime() - new Date(a.completed_at!).getTime()), [tasks]);
+  const sortedChores = useMemo(() =>
+    chores.filter((c) => !isArchived(c) && filterItem(c))
+      .sort((a, b) => {
+        if (a.completed !== b.completed) return a.completed ? 1 : -1;
+        if (a.due_date && !b.due_date) return -1;
+        if (!a.due_date && b.due_date) return 1;
+        if (a.due_date && b.due_date) return a.due_date.localeCompare(b.due_date);
+        return b.created_at.localeCompare(a.created_at);
+      }), [chores, search, filterAssignee]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const archivedChores = useMemo(() =>
+    chores.filter((c) => isArchived(c))
+      .sort((a, b) => new Date(b.completed_at!).getTime() - new Date(a.completed_at!).getTime()),
+    [chores]);
+
+  const sortedTasks = useMemo(() =>
+    tasks.filter((t) => !isArchived(t) && filterItem(t))
+      .sort((a, b) => {
+        if (a.completed !== b.completed) return a.completed ? 1 : -1;
+        if (a.due_date && !b.due_date) return -1;
+        if (!a.due_date && b.due_date) return 1;
+        if (a.due_date && b.due_date) return a.due_date.localeCompare(b.due_date);
+        return b.created_at.localeCompare(a.created_at);
+      }), [tasks, search, filterAssignee]);
+
+  const archivedTasks = useMemo(() =>
+    tasks.filter((t) => isArchived(t))
+      .sort((a, b) => new Date(b.completed_at!).getTime() - new Date(a.completed_at!).getTime()),
+    [tasks]);
+
   const totalActiveChores = chores.filter((c) => !c.completed).length;
   const totalActiveTasks = tasks.filter((t) => !t.completed).length;
   const overdue = [...chores.filter((c) => !c.completed && isOverdueDate(c.due_date)), ...tasks.filter((t) => !t.completed && isOverdueDate(t.due_date))].length;
@@ -357,32 +379,42 @@ const Chores = () => {
 
           <TabsContent value="chores" className="space-y-4">
             <Tabs defaultValue="active">
-              <TabsList><TabsTrigger value="active">Active</TabsTrigger><TabsTrigger value="completed">Completed</TabsTrigger></TabsList>
+              <TabsList>
+                <TabsTrigger value="active">Active</TabsTrigger>
+                <TabsTrigger value="archived" className="gap-1.5">
+                  Archived {archivedChores.length > 0 && <Badge variant="secondary" className="text-xs">{archivedChores.length}</Badge>}
+                </TabsTrigger>
+              </TabsList>
               <TabsContent value="active" className="space-y-2 mt-4">
-                {activeChores.length === 0
+                {sortedChores.length === 0
                   ? emptyState(<CheckCircle2 className="mb-3 h-10 w-10 text-muted-foreground/40" />, chores.length === 0 ? "No chores yet — create one to get started!" : "All caught up! 🎉")
-                  : <div className="space-y-2">{activeChores.map(renderChoreItem)}</div>}
+                  : <div className="space-y-2">{sortedChores.map((c) => c.completed ? renderCompleted(c, true) : renderChoreItem(c))}</div>}
               </TabsContent>
-              <TabsContent value="completed" className="space-y-2 mt-4">
-                {completedChores.length === 0
-                  ? emptyState(<Clock className="mb-3 h-10 w-10 text-muted-foreground/40" />, "No completed chores yet.")
-                  : <div className="space-y-2">{completedChores.map((c) => renderCompleted(c, true))}</div>}
+              <TabsContent value="archived" className="space-y-2 mt-4">
+                {archivedChores.length === 0
+                  ? emptyState(<Clock className="mb-3 h-10 w-10 text-muted-foreground/40" />, "No archived chores.")
+                  : <div className="space-y-2">{archivedChores.map((c) => renderCompleted(c, true))}</div>}
               </TabsContent>
             </Tabs>
           </TabsContent>
 
           <TabsContent value="tasks" className="space-y-4">
             <Tabs defaultValue="active">
-              <TabsList><TabsTrigger value="active">Active</TabsTrigger><TabsTrigger value="completed">Completed</TabsTrigger></TabsList>
+              <TabsList>
+                <TabsTrigger value="active">Active</TabsTrigger>
+                <TabsTrigger value="archived" className="gap-1.5">
+                  Archived {archivedTasks.length > 0 && <Badge variant="secondary" className="text-xs">{archivedTasks.length}</Badge>}
+                </TabsTrigger>
+              </TabsList>
               <TabsContent value="active" className="space-y-2 mt-4">
-                {activeTasks.length === 0
+                {sortedTasks.length === 0
                   ? emptyState(<CheckCircle2 className="mb-3 h-10 w-10 text-muted-foreground/40" />, tasks.length === 0 ? "No tasks yet — create one to get started!" : "All tasks done! 🎉")
-                  : <div className="space-y-2">{activeTasks.map(renderTaskItem)}</div>}
+                  : <div className="space-y-2">{sortedTasks.map((t) => t.completed ? renderCompleted(t, false) : renderTaskItem(t))}</div>}
               </TabsContent>
-              <TabsContent value="completed" className="space-y-2 mt-4">
-                {completedTasks.length === 0
-                  ? emptyState(<Clock className="mb-3 h-10 w-10 text-muted-foreground/40" />, "No completed tasks yet.")
-                  : <div className="space-y-2">{completedTasks.map((t) => renderCompleted(t, false))}</div>}
+              <TabsContent value="archived" className="space-y-2 mt-4">
+                {archivedTasks.length === 0
+                  ? emptyState(<Clock className="mb-3 h-10 w-10 text-muted-foreground/40" />, "No archived tasks.")
+                  : <div className="space-y-2">{archivedTasks.map((t) => renderCompleted(t, false))}</div>}
               </TabsContent>
             </Tabs>
           </TabsContent>
