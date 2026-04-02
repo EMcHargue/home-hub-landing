@@ -963,42 +963,6 @@ const MealPlanning = () => {
                 onChange={(e) => setLeftoverDialog((p) => p && ({ ...p, expirationDate: e.target.value }))}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label>Group (optional)</Label>
-              <Select
-                value={leftoverDialog?.groupId != null ? String(leftoverDialog.groupId) : "none"}
-                onValueChange={(v) =>
-                  setLeftoverDialog((p) =>
-                    p && ({ ...p, groupId: v === "none" ? null : parseInt(v), newGroupName: "" })
-                  )
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="No group" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No group</SelectItem>
-                  {groups
-                    .filter((g) => g.category_id === leftoversCategoryId || leftoversCategoryId == null)
-                    .map((g) => (
-                      <SelectItem key={g.id} value={String(g.id)}>
-                        {g.name}
-                      </SelectItem>
-                    ))}
-                  <SelectItem value="-1">+ New group…</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {leftoverDialog?.groupId === -1 && (
-              <div className="space-y-1.5">
-                <Label>New group name</Label>
-                <Input
-                  placeholder="Group name"
-                  value={leftoverDialog?.newGroupName ?? ""}
-                  onChange={(e) => setLeftoverDialog((p) => p && ({ ...p, newGroupName: e.target.value }))}
-                />
-              </div>
-            )}
             <div className="flex gap-6">
               <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
                 <input
