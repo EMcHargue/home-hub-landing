@@ -70,7 +70,13 @@ const Chores = () => {
   function parseDateSafe(d: string | null): Date | null {
     if (!d) return null;
     try {
-      const [year, month, day] = d.trim().split("-").map(Number);
+      const trimmed = d.trim().slice(0, 10); // ensure YYYY-MM-DD only
+      const parts = trimmed.split("-");
+      if (parts.length !== 3) return null;
+      const year = Number(parts[0]);
+      const month = Number(parts[1]);
+      const day = Number(parts[2]);
+      if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
       return startOfDay(new Date(year, month - 1, day));
     } catch { return null; }
   }
