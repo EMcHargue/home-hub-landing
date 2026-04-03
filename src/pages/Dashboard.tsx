@@ -18,6 +18,7 @@ import {
   Trash2,
   Users,
   UtensilsCrossed,
+  ShoppingCart,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -43,6 +44,13 @@ const sections = [
     description: "Plan weekly meals, save recipes, and auto-generate shopping lists.",
     icon: UtensilsCrossed,
     href: "/meals",
+    ready: true,
+  },
+  {
+    title: "Shopping",
+    description: "Manage your shopping list and plan ingredients from meals.",
+    icon: ShoppingCart,
+    href: "/shopping",
     ready: true,
   },
   {

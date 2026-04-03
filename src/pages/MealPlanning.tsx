@@ -713,11 +713,6 @@ const MealPlanning = () => {
               <BookOpen className="h-4 w-4" />
               Recipes
             </TabsTrigger>
-            <TabsTrigger value="shopping" className="gap-1.5 flex-1 sm:flex-none">
-              <ShoppingCart className="h-4 w-4" />
-              <span className="hidden sm:inline">Shopping List</span>
-              <span className="sm:hidden">Shopping</span>
-            </TabsTrigger>
           </TabsList>
 
           {/* ─── WEEKLY CALENDAR ─── */}
@@ -749,7 +744,29 @@ const MealPlanning = () => {
             <div className="hidden sm:block">
               <DesktopWeekView {...sharedCalendarProps} />
             </div>
-          </TabsContent>
+
+            {shoppingList.length > 0 && (
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={exportToPantryList.isPending || !userId}
+                  onClick={() => {
+                    const unlinked = shoppingList
+                      .filter(({ name }) => !linkedIngredients.has(name))
+                      .map(({ name }) => name);
+                    if (unlinked.length > 0) exportToPantryList.mutate(unlinked);
+                    else toast({ title: "All items are already on shopping list" });
+                  }}
+                >
+                  <ShoppingCart className="h-4 w-4" />
+                  <span className="hidden sm:inline">Export to Shopping List</span>
+                  <span className="sm:hidden">Export</span>
+                </Button>
+              </div>
+            )}
+          </TabsContent>  
 
           {/* ─── RECIPES ─── */}
           <TabsContent value="recipes" className="space-y-4">
@@ -859,70 +876,6 @@ const MealPlanning = () => {
             )}
           </TabsContent>
 
-          {/* ─── SHOPPING LIST ─── */}
-          <TabsContent value="shopping" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <CardTitle className="text-lg">Shopping List for {weekLabel}</CardTitle>
-                    <CardDescription>
-                      Auto-generated from your planned meals and recipes for the week.
-                    </CardDescription>
-                  </div>
-                  {shoppingList.length > 0 && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="shrink-0 gap-1.5"
-                      disabled={exportToPantryList.isPending || !userId}
-                      onClick={() => {
-                        const unlinked = shoppingList
-                          .filter(({ name }) => !linkedIngredients.has(name))
-                          .map(({ name }) => name);
-                        if (unlinked.length > 0) exportToPantryList.mutate(unlinked);
-                        else toast({ title: "All items are already claimed from pantry" });
-                      }}
-                    >
-                      <ShoppingCart className="h-4 w-4" />
-                      <span className="hidden sm:inline">Export to Shopping List</span>
-                      <span className="sm:hidden">Export</span>
-                    </Button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent>
-                {shoppingList.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-6">
-                    No ingredients needed — plan some meals first.
-                  </p>
-                ) : (
-                  <ul className="space-y-1.5">
-                    {shoppingList.map(({ name, meals }) => {
-                      const checked = linkedIngredients.has(name);
-                      return (
-                        <li
-                          key={name}
-                          className={`flex items-center justify-between rounded-lg border px-4 py-2 text-sm cursor-pointer transition-colors ${checked ? "border-border/40 bg-muted/30 hover:bg-muted/50" : "border-border hover:bg-muted/50"}`}
-                          onClick={() => {
-                            if (checked) {
-                              const id = linkIdByIngredient.get(name);
-                              if (id != null) deleteLink.mutate(id);
-                            } else {
-                              setIngredientDialog({ ingredient: name, nav: { level: "categories" } });
-                            }
-                          }}
-                        >
-                          <span className={`capitalize ${checked ? "line-through text-muted-foreground" : "text-foreground"}`}>{name}</span>
-                          <span className="text-xs text-muted-foreground ml-3 text-right">{meals.join(", ")}</span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
         </Tabs>
       </main>
 

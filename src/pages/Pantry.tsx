@@ -829,10 +829,9 @@ const Pantry = () => {
 
         {/* Tabs */}
         <Tabs defaultValue="inventory" className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-3">
+          <TabsList className="grid w-full max-w-md grid-cols-2">
             <TabsTrigger value="inventory" className="gap-1"><Package className="h-4 w-4 hidden sm:inline" />Inventory</TabsTrigger>
             <TabsTrigger value="restock" className="gap-1"><AlertTriangle className="h-4 w-4 hidden sm:inline" />Restock</TabsTrigger>
-            <TabsTrigger value="shopping" className="gap-1"><ShoppingCart className="h-4 w-4 hidden sm:inline" />Shopping List</TabsTrigger>
           </TabsList>
 
           {/* ── Inventory Tab ── */}
@@ -1110,148 +1109,6 @@ const Pantry = () => {
                     </Card>
                   ))}
                 </div>
-              </div>
-            )}
-          </TabsContent>
-
-          {/* ── Shopping List Tab ── */}
-          <TabsContent value="shopping" className="space-y-4">
-            <div className="flex gap-2">
-              <Input
-                placeholder="Add item to shopping list…"
-                value={newShoppingName}
-                onChange={(e) => setNewShoppingName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && newShoppingName.trim()) {
-                    addShopping.mutate({ name: newShoppingName.trim(), categoryId: newShoppingCategoryId });
-                    setNewShoppingName("");
-                    setNewShoppingCategoryId(null);
-                  }
-                }}
-              />
-              <Select
-                value={newShoppingCategoryId != null ? String(newShoppingCategoryId) : "__none__"}
-                onValueChange={(v) => setNewShoppingCategoryId(v === "__none__" ? null : parseInt(v))}
-              >
-                <SelectTrigger className="w-44 shrink-0"><SelectValue placeholder="Category" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">No category</SelectItem>
-                  {apiCategories.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                onClick={() => {
-                  if (!newShoppingName.trim()) return;
-                  addShopping.mutate({ name: newShoppingName.trim(), categoryId: newShoppingCategoryId });
-                  setNewShoppingName("");
-                  setNewShoppingCategoryId(null);
-                }}
-                disabled={!newShoppingName.trim() || addShopping.isPending}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="flex items-center justify-between">
-              <CardDescription>{shoppingList.length} items on your shopping list</CardDescription>
-              {shoppingList.length > 0 && (
-                <Button variant="outline" size="sm" onClick={() => shoppingList.forEach((s) => deleteShopping.mutate(s.id))}>
-                  Clear All
-                </Button>
-              )}
-            </div>
-            {shoppingList.length === 0 ? (
-              <Card><CardContent className="py-12 text-center text-muted-foreground flex flex-col items-center gap-2">
-                <ShoppingCart className="h-10 w-10 text-primary" />
-                <p className="font-medium text-foreground">Shopping list is empty</p>
-                <p>Add items from the Restock tab or search your inventory.</p>
-              </CardContent></Card>
-            ) : (
-              <div className="grid gap-2">
-                {shoppingList.map((s) => {
-                  const item = items.find((i) => i.name === s.name);
-                  const isEditing = editingShoppingId === s.id;
-                  return (
-                    <Card key={s.id}>
-                      <CardContent className="py-3 flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-3 flex-wrap flex-1 min-w-0">
-                          <ShoppingCart className="h-4 w-4 text-muted-foreground shrink-0" />
-                          <span className="font-medium text-foreground">{s.name}</span>
-                          {isEditing ? (
-                            <div className="flex items-center gap-1">
-                              <Input
-                                type="number"
-                                min={0}
-                                step="any"
-                                className="h-7 w-20 text-sm"
-                                value={editQty}
-                                onChange={(e) => setEditQty(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    const qty = editQty === "" ? null : Number(editQty);
-                                    updateShopping.mutate({ id: s.id, requestedQuantity: qty, unit: s.unit });
-                                    setEditingShoppingId(null);
-                                  } else if (e.key === "Escape") {
-                                    setEditingShoppingId(null);
-                                  }
-                                }}
-                                autoFocus
-                              />
-                              <span className="text-sm text-muted-foreground">{s.unit ?? ""}</span>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2 text-xs"
-                                onClick={() => {
-                                  const qty = editQty === "" ? null : Number(editQty);
-                                  updateShopping.mutate({ id: s.id, requestedQuantity: qty, unit: s.unit });
-                                  setEditingShoppingId(null);
-                                }}
-                              >
-                                Save
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 px-2 text-xs"
-                                onClick={() => setEditingShoppingId(null)}
-                              >
-                                Cancel
-                              </Button>
-                            </div>
-                          ) : (
-                            <button
-                              className="text-sm font-medium text-foreground hover:underline cursor-pointer"
-                              onClick={() => {
-                                setEditQty(s.requestedQuantity != null ? String(s.requestedQuantity) : "");
-                                setEditingShoppingId(s.id);
-                              }}
-                            >
-                              {s.requestedQuantity != null
-                                ? `× ${s.requestedQuantity} ${s.unit ?? ""}`
-                                : <span className="text-muted-foreground text-xs">+ qty</span>}
-                            </button>
-                          )}
-                          {item && <span className="text-sm text-muted-foreground">({item.quantity} {item.unit} left)</span>}
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-primary"
-                          title="Move to pantry"
-                          onClick={() => processToInventory.mutate(s)}
-                          disabled={processToInventory.isPending}
-                        >
-                          <PackagePlus className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => deleteShopping.mutate(s.id)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
               </div>
             )}
           </TabsContent>
