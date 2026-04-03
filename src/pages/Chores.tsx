@@ -69,7 +69,10 @@ const Chores = () => {
 
   function parseDateSafe(d: string | null): Date | null {
     if (!d) return null;
-    try { return startOfDay(parseISO(d.trim())); } catch { return null; }
+    try {
+      const [year, month, day] = d.trim().split("-").map(Number);
+      return startOfDay(new Date(year, month - 1, day));
+    } catch { return null; }
   }
 
   // ---------- Mutations (unchanged logic) ----------
