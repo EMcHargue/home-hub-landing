@@ -245,7 +245,10 @@ const Chores = () => {
             {item.description && <p className="mt-0.5 text-sm text-muted-foreground truncate">{item.description}</p>}
             <div className="mt-1.5 flex items-center gap-3 text-xs text-muted-foreground">
               <span className="flex items-center gap-1"><Users className="h-3 w-3" />{getMemberName(item.assignee_id)}</span>
-              {item.due_date && <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{new Date(item.due_date.trim() + "T12:00:00").toLocaleDateString()}</span>}
+              {item.due_date && (() => {
+                const d = parseDateSafe(item.due_date);
+                return d ? <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{format(d, "MMM d, yyyy")}</span> : null;
+              })()}
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
