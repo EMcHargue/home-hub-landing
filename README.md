@@ -1,54 +1,58 @@
-# Welcome to your Lovable project
+## Overview
+Home Hub is a modern, responsive landing experience designed as the front door for a potential home management platform. The goal of this project is to create a clean, extensible UI that could evolve into a full SaaS-style application with features like user personalization, integrations, and AI-driven insights.
 
-## Project info
+This project emphasizes **rapid iteration, usability, and scalability**, demonstrating how to move efficiently from concept to a functional, user-facing product.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+---
 
-## How can I edit this code?
+## Tech Stack
+- **Frontend:** [Angular / React / etc. — update as needed]
+- **Styling:** Responsive design with a focus on clean UI/UX
+- **Tooling:** Git, local development tools
+- **AI Tools:** Claude, GitHub Copilot (used to accelerate development and prototyping)
 
-There are several ways of editing your application.
+---
 
-**Use Lovable**
+## Key Features
+- Responsive, user-friendly landing page design
+- Modular component structure for easy extension
+- Clean and intuitive UI focused on usability
+- Foundation for future features like authentication and dashboards
+- Built with scalability and maintainability in mind
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+---
 
-Changes made via Lovable will be committed automatically to this repo.
+## Why This Project Matters
+This project showcases my ability to **design and build polished, user-facing applications from scratch**. It reflects a practical, product-oriented approach to development, balancing speed with quality.
 
-**Use your preferred IDE**
+It also highlights my use of **AI-assisted development workflows**, leveraging tools like Claude and Copilot to:
+- Rapidly prototype features and UI components
+- Explore implementation approaches efficiently
+- Accelerate development cycles while maintaining code quality
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+---
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+## Future Enhancements
+Planned or potential next steps include:
+- User authentication and account management
+- Backend services and API integrations
+- Personalized dashboards and user data flows
+- AI-driven recommendations and insights
+- Expansion into a full SaaS-style platform
 
-Follow these steps:
+---
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+## Getting Started
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+### Prerequisites
+- [Node.js / .NET / etc. — update based on your stack]
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+### Installation
+```bash
+git clone https://github.com/EMcHargue/home-hub-landing.git
+cd home-hub-landing
+npm install
 ```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
 
 ## What technologies are used for this project?
 
@@ -59,15 +63,3 @@ This project is built with:
 - React
 - shadcn-ui
 - Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
