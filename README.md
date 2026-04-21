@@ -44,9 +44,6 @@ Planned or potential next steps include:
 
 ## Getting Started
 
-### Prerequisites
-- [Node.js / .NET / etc. — update based on your stack]
-
 ### Installation
 ```bash
 git clone https://github.com/EMcHargue/home-hub-landing.git
