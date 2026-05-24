@@ -19,12 +19,20 @@ import {
   Users,
   UtensilsCrossed,
   ShoppingCart,
+  CalendarDays,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { api, ApiMember } from "@/lib/api";
 
 const sections = [
+  {
+    title: "Calendar",
+    description: "See chores, tasks, and meals together by day, with overdue alerts.",
+    icon: CalendarDays,
+    href: "/calendar",
+    ready: true,
+  },
   {
     title: "Pantry",
     description: "Track inventory, restock items, and manage your shopping list.",
