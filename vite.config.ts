@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => ({
       overlay: false,
     },
     proxy: {
-      "/api": "http://localhost:4000",
+      "/api": "http://127.0.0.1:4000",
     },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
