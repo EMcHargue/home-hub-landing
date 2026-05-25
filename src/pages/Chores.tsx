@@ -10,19 +10,21 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  ArrowLeft, Plus, Trash2, Users, CalendarDays, RotateCcw, ClipboardList, Pencil, AlertTriangle, ChevronRight, Clock,
+  ArrowLeft, Plus, Trash2, Users, CalendarDays, RotateCcw, ClipboardList,
+  Pencil, AlertTriangle, ChevronLeft, ChevronRight, Sun, Cloud, Moon,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { api, ApiMember } from "@/lib/api";
 import { format, addDays, startOfDay, isSameDay, isBefore } from "date-fns";
 
 type RecurrenceFrequency = "none" | "daily" | "weekly" | "monthly";
+type TimeOfDay = "morning" | "afternoon" | "evening";
 
 type Chore = {
   id: string; title: string; description: string | null; assignee_id: string | null;
   completed: boolean; completed_at: string | null; created_at: string;
   due_date: string | null; start_date: string | null; end_date: string | null;
-  recurrence: RecurrenceFrequency;
+  recurrence: RecurrenceFrequency; time_of_day: string | null;
 };
 
 type Task = {
@@ -33,14 +35,23 @@ type Task = {
 type UnifiedItem = {
   id: string; title: string; description: string | null; assignee_id: string | null;
   completed: boolean; completed_at: string | null; due_date: string | null;
-  type: "chore" | "task"; recurrence?: RecurrenceFrequency;
+  type: "chore" | "task"; recurrence?: RecurrenceFrequency; time_of_day?: string | null;
 };
 
 const END_OF_YEAR = `${new Date().getFullYear()}-12-31`;
-const TODAY_STR = format(new Date(), "yyyy-MM-dd");
+const TODAY_STR   = format(new Date(), "yyyy-MM-dd");
 
-const BLANK_CHORE = { title: "", description: "", assigneeId: "unassigned", dueDate: "", startDate: TODAY_STR, endDate: END_OF_YEAR, recurrence: "none" as RecurrenceFrequency };
+const BLANK_CHORE = { title: "", description: "", assigneeId: "unassigned", dueDate: "", startDate: TODAY_STR, endDate: END_OF_YEAR, recurrence: "none" as RecurrenceFrequency, timeOfDay: "afternoon" };
 const BLANK_TASK  = { title: "", description: "", assigneeId: "unassigned", dueDate: "" };
+
+const TOD_META: Record<TimeOfDay, { label: string; icon: React.ReactNode }> = {
+  morning:   { label: "Morning",   icon: <Sun   className="h-4 w-4 text-yellow-500" /> },
+  afternoon: { label: "Afternoon", icon: <Cloud className="h-4 w-4 text-blue-400"   /> },
+  evening:   { label: "Evening",   icon: <Moon  className="h-4 w-4 text-indigo-400" /> },
+};
+const TOD_ORDER: TimeOfDay[] = ["morning", "afternoon", "evening"];
+
+const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
 const Chores = () => {
   const { toast } = useToast();
@@ -58,10 +69,16 @@ const Chores = () => {
   const [editTask,  setEditTask]  = useState<Task | null>(null);
   const [editChoreForm, setEditChoreForm] = useState(BLANK_CHORE);
   const [editTaskForm,  setEditTaskForm]  = useState(BLANK_TASK);
-  const [selectedDate,  setSelectedDate]  = useState<Date | null>(null);
-  const [lookAheadDays, setLookAheadDays] = useState(7);
 
   const today = startOfDay(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(today);
+  const [weekOffset, setWeekOffset] = useState(0);
+
+  const weekDates = useMemo(() => {
+    const base = new Date(today);
+    base.setDate(today.getDate() - today.getDay() + weekOffset * 7);
+    return Array.from({ length: 7 }, (_, i) => { const d = new Date(base); d.setDate(base.getDate() + i); return d; });
+  }, [weekOffset]);
 
   function getMemberName(id: string | null) {
     if (!id) return "Unassigned";
@@ -71,10 +88,10 @@ const Chores = () => {
   function parseDateSafe(d: string | null): Date | null {
     if (!d) return null;
     try {
-      const trimmed = d.trim().slice(0, 10);
-      const [year, month, day] = trimmed.split("-").map(Number);
-      if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
-      return startOfDay(new Date(year, month - 1, day));
+      const t = d.trim().slice(0, 10);
+      const [y, m, day] = t.split("-").map(Number);
+      if (isNaN(y) || isNaN(m) || isNaN(day)) return null;
+      return startOfDay(new Date(y, m - 1, day));
     } catch { return null; }
   }
 
@@ -82,10 +99,7 @@ const Chores = () => {
   const createChoreMutation = useMutation({
     mutationFn: (body: object) =>
       fetch("/api/chores", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json()),
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["chores"] });
-      toast({ title: data.count ? `${data.count} chore instances created` : "Chore created" });
-    },
+    onSuccess: (data) => { qc.invalidateQueries({ queryKey: ["chores"] }); toast({ title: data.count ? `${data.count} chore instances created` : "Chore created" }); },
     onError: () => toast({ title: "Failed to create chore", variant: "destructive" }),
   });
 
@@ -127,6 +141,7 @@ const Chores = () => {
       description: choreForm.description.trim() || null,
       assignee_id: choreForm.assigneeId === "unassigned" ? null : choreForm.assigneeId,
       recurrence:  choreForm.recurrence,
+      time_of_day: choreForm.timeOfDay,
       ...(isRecurring
         ? { start_date: choreForm.startDate, end_date: choreForm.endDate }
         : { due_date: choreForm.dueDate || null }),
@@ -135,13 +150,14 @@ const Chores = () => {
 
   const openEditChore = (chore: Chore) => {
     setEditChoreForm({
-      title:      chore.title,
+      title:       chore.title,
       description: chore.description ?? "",
-      assigneeId: chore.assignee_id ?? "unassigned",
-      dueDate:    chore.due_date   ? chore.due_date.slice(0, 10)   : "",
-      startDate:  chore.start_date ? chore.start_date.slice(0, 10) : TODAY_STR,
-      endDate:    chore.end_date   ? chore.end_date.slice(0, 10)   : END_OF_YEAR,
-      recurrence: chore.recurrence,
+      assigneeId:  chore.assignee_id ?? "unassigned",
+      dueDate:     chore.due_date    ? chore.due_date.slice(0, 10)    : "",
+      startDate:   chore.start_date  ? chore.start_date.slice(0, 10)  : TODAY_STR,
+      endDate:     chore.end_date    ? chore.end_date.slice(0, 10)    : END_OF_YEAR,
+      recurrence:  chore.recurrence,
+      timeOfDay:   chore.time_of_day ?? "afternoon",
     });
     setEditChore(chore);
   };
@@ -155,6 +171,7 @@ const Chores = () => {
       description: editChoreForm.description.trim() || null,
       assignee_id: editChoreForm.assigneeId === "unassigned" ? null : editChoreForm.assigneeId,
       recurrence:  editChoreForm.recurrence,
+      time_of_day: editChoreForm.timeOfDay,
       ...(isRecurring
         ? { start_date: editChoreForm.startDate, end_date: editChoreForm.endDate, due_date: null }
         : { due_date: editChoreForm.dueDate || null, start_date: null, end_date: null }),
@@ -164,10 +181,9 @@ const Chores = () => {
   const addTask = () => {
     if (!taskForm.title.trim()) { toast({ title: "Task title is required", variant: "destructive" }); return; }
     createTaskMutation.mutate({
-      title:       taskForm.title.trim(),
-      description: taskForm.description.trim() || null,
+      title: taskForm.title.trim(), description: taskForm.description.trim() || null,
       assignee_id: taskForm.assigneeId === "unassigned" ? null : taskForm.assigneeId,
-      due_date:    taskForm.dueDate || null,
+      due_date: taskForm.dueDate || null,
     }, { onSuccess: () => { setTaskForm(BLANK_TASK); setTaskOpen(false); } });
   };
 
@@ -179,94 +195,43 @@ const Chores = () => {
   const saveEditTask = () => {
     if (!editTask || !editTaskForm.title.trim()) return;
     updateTaskMutation.mutate({
-      id:          editTask.id,
-      title:       editTaskForm.title.trim(),
+      id: editTask.id, title: editTaskForm.title.trim(),
       description: editTaskForm.description.trim() || null,
       assignee_id: editTaskForm.assigneeId === "unassigned" ? null : editTaskForm.assigneeId,
-      due_date:    editTaskForm.dueDate || null,
+      due_date: editTaskForm.dueDate || null,
     }, { onSuccess: () => setEditTask(null) });
   };
 
-  // ── Unified items (incomplete only) ────────────────────────────────────────
-  const allItems: UnifiedItem[] = useMemo(() => [
+  // ── Derived data ───────────────────────────────────────────────────────────
+  const allIncomplete: UnifiedItem[] = useMemo(() => [
     ...chores.filter(c => !c.completed).map(c => ({ ...c, type: "chore" as const })),
     ...tasks.filter(t  => !t.completed).map(t => ({ ...t, type: "task"  as const })),
   ], [chores, tasks]);
 
   const overdueItems = useMemo(() =>
-    allItems.filter(item => { const d = parseDateSafe(item.due_date); return d && isBefore(d, today); })
-            .sort((a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? "")),
-    [allItems]);
+    allIncomplete.filter(item => { const d = parseDateSafe(item.due_date); return d && isBefore(d, today); })
+                 .sort((a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? "")),
+    [allIncomplete]);
 
-  const todayItems  = useMemo(() =>
-    allItems.filter(item => { const d = parseDateSafe(item.due_date); return d && isSameDay(d, today); }),
-    [allItems]);
+  const noDateItems = useMemo(() => allIncomplete.filter(item => !item.due_date), [allIncomplete]);
 
-  const noDateItems = useMemo(() => allItems.filter(item => !item.due_date), [allItems]);
+  const selectedDayItems = useMemo(() =>
+    allIncomplete.filter(item => { const d = parseDateSafe(item.due_date); return d && isSameDay(d, selectedDate); }),
+    [allIncomplete, selectedDate]);
 
-  const futureDays  = useMemo(() => {
-    const days: { date: Date; items: UnifiedItem[] }[] = [];
-    for (let i = 1; i <= lookAheadDays; i++) {
-      const d = addDays(today, i);
-      days.push({ date: d, items: allItems.filter(item => { const id = parseDateSafe(item.due_date); return id && isSameDay(id, d); }) });
+  const itemsByTod = useMemo(() => {
+    const map: Record<TimeOfDay, UnifiedItem[]> = { morning: [], afternoon: [], evening: [] };
+    for (const item of selectedDayItems) {
+      const tod = (item.time_of_day as TimeOfDay) ?? "afternoon";
+      map[tod].push(item);
     }
-    return days;
-  }, [allItems, lookAheadDays]);
+    if (isSameDay(selectedDate, today)) {
+      for (const item of noDateItems) map.afternoon.push(item);
+    }
+    return map;
+  }, [selectedDayItems, noDateItems, selectedDate]);
 
-  const selectedDateItems = useMemo(() => {
-    if (!selectedDate) return [];
-    return allItems.filter(item => { const d = parseDateSafe(item.due_date); return d && isSameDay(d, selectedDate); });
-  }, [allItems, selectedDate]);
-
-  // ── Render helpers ─────────────────────────────────────────────────────────
-  const renderDetailItem = (item: UnifiedItem) => {
-    const isChore  = item.type === "chore";
-    const isOverdue = (() => { const d = parseDateSafe(item.due_date); return d && isBefore(d, today); })();
-    return (
-      <Card key={`${item.type}-${item.id}`} className="shadow-[var(--card-shadow)] transition-shadow hover:shadow-[var(--card-hover-shadow)]">
-        <CardContent className="flex items-start gap-3 p-4">
-          <Checkbox
-            checked={false}
-            onCheckedChange={() => isChore
-              ? updateChoreMutation.mutate({ id: item.id, completed: true })
-              : updateTaskMutation.mutate({ id: item.id, completed: true })}
-            className="mt-1"
-          />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="outline" className="text-xs">
-                {isChore ? <><RotateCcw className="mr-1 h-3 w-3" />Chore</> : <><ClipboardList className="mr-1 h-3 w-3" />Task</>}
-              </Badge>
-              <span className="font-medium text-foreground">{item.title}</span>
-              {isChore && item.recurrence && item.recurrence !== "none" && (
-                <Badge variant="secondary" className="text-xs capitalize">
-                  <RotateCcw className="mr-1 h-3 w-3" />{item.recurrence}
-                </Badge>
-              )}
-              {isOverdue && <Badge variant="destructive" className="text-xs">Overdue</Badge>}
-            </div>
-            {item.description && <p className="mt-0.5 text-sm text-muted-foreground truncate">{item.description}</p>}
-            <div className="mt-1.5 flex items-center gap-3 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1"><Users className="h-3 w-3" />{getMemberName(item.assignee_id)}</span>
-              {item.due_date && (() => { const d = parseDateSafe(item.due_date); return d ? <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{format(d, "MMM d, yyyy")}</span> : null; })()}
-            </div>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary"
-              onClick={() => isChore ? openEditChore(chores.find(c => c.id === item.id)!) : openEditTask(tasks.find(t => t.id === item.id)!)}>
-              <Pencil className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive"
-              onClick={() => isChore ? deleteChoreMutation.mutate(item.id) : deleteTaskMutation.mutate(item.id)}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
-
-  // ── Chore form fields (reused in create + edit dialogs) ────────────────────
+  // ── Chore form fields ──────────────────────────────────────────────────────
   const renderChoreFields = (form: typeof BLANK_CHORE, setForm: (f: typeof BLANK_CHORE) => void) => (
     <div className="space-y-4 py-2">
       <div className="space-y-1.5"><Label>Title *</Label>
@@ -311,10 +276,65 @@ const Chores = () => {
           </div>
         </div>
       )}
+      <div className="space-y-1.5"><Label>Time of day</Label>
+        <Select value={form.timeOfDay} onValueChange={(v) => setForm({ ...form, timeOfDay: v })}>
+          <SelectTrigger><span className="capitalize">{form.timeOfDay}</span></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="morning">Morning</SelectItem>
+            <SelectItem value="afternoon">Afternoon</SelectItem>
+            <SelectItem value="evening">Evening</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
     </div>
   );
 
-  // ── JSX ────────────────────────────────────────────────────────────────────
+  // ── Item card ──────────────────────────────────────────────────────────────
+  const renderItem = (item: UnifiedItem) => {
+    const isChore   = item.type === "chore";
+    const isOverdue = (() => { const d = parseDateSafe(item.due_date); return d && isBefore(d, today); })();
+    return (
+      <Card key={`${item.type}-${item.id}`} className="shadow-sm transition-shadow hover:shadow-md">
+        <CardContent className="flex items-start gap-3 p-4">
+          <Checkbox checked={false}
+            onCheckedChange={() => isChore
+              ? updateChoreMutation.mutate({ id: item.id, completed: true })
+              : updateTaskMutation.mutate({ id: item.id, completed: true })}
+            className="mt-1" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="outline" className="text-xs">
+                {isChore ? <><RotateCcw className="mr-1 h-3 w-3" />Chore</> : <><ClipboardList className="mr-1 h-3 w-3" />Task</>}
+              </Badge>
+              <span className="font-medium text-foreground">{item.title}</span>
+              {isChore && item.recurrence && item.recurrence !== "none" && (
+                <Badge variant="secondary" className="text-xs capitalize"><RotateCcw className="mr-1 h-3 w-3" />{item.recurrence}</Badge>
+              )}
+              {isOverdue && <Badge variant="destructive" className="text-xs">Overdue</Badge>}
+            </div>
+            {item.description && <p className="mt-0.5 text-sm text-muted-foreground truncate">{item.description}</p>}
+            <div className="mt-1.5 flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1"><Users className="h-3 w-3" />{getMemberName(item.assignee_id)}</span>
+              {item.due_date && (() => { const d = parseDateSafe(item.due_date); return d ? <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{format(d, "MMM d, yyyy")}</span> : null; })()}
+            </div>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary"
+              onClick={() => isChore ? openEditChore(chores.find(c => c.id === item.id)!) : openEditTask(tasks.find(t => t.id === item.id)!)}>
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive"
+              onClick={() => isChore ? deleteChoreMutation.mutate(item.id) : deleteTaskMutation.mutate(item.id)}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const isSelectedToday = isSameDay(selectedDate, today);
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
@@ -322,7 +342,7 @@ const Chores = () => {
           <Button variant="ghost" size="icon" asChild><Link to="/dashboard"><ArrowLeft className="h-5 w-5" /></Link></Button>
           <div className="flex-1">
             <h1 className="font-serif text-2xl font-bold text-foreground">Chores & Tasks</h1>
-            <p className="text-sm text-muted-foreground hidden sm:block">Calendar view of your household chores and tasks.</p>
+            <p className="text-sm text-muted-foreground hidden sm:block">Your daily chores and tasks.</p>
           </div>
           <div className="flex gap-2">
             <Dialog open={choreOpen} onOpenChange={setChoreOpen}>
@@ -330,9 +350,7 @@ const Chores = () => {
               <DialogContent>
                 <DialogHeader><DialogTitle>Create Chore</DialogTitle></DialogHeader>
                 {renderChoreFields(choreForm, setChoreForm)}
-                <DialogFooter><Button onClick={addChore} disabled={createChoreMutation.isPending}>
-                  {createChoreMutation.isPending ? "Creating..." : "Create"}
-                </Button></DialogFooter>
+                <DialogFooter><Button onClick={addChore} disabled={createChoreMutation.isPending}>{createChoreMutation.isPending ? "Creating..." : "Create"}</Button></DialogFooter>
               </DialogContent>
             </Dialog>
             <Dialog open={taskOpen} onOpenChange={setTaskOpen}>
@@ -350,10 +368,7 @@ const Chores = () => {
                     <div className="space-y-1.5"><Label>Assign to</Label>
                       <Select value={taskForm.assigneeId} onValueChange={(v) => setTaskForm({ ...taskForm, assigneeId: v })}>
                         <SelectTrigger><span>{taskForm.assigneeId === "unassigned" ? "Unassigned" : getMemberName(taskForm.assigneeId)}</span></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="unassigned">Unassigned</SelectItem>
-                          {members.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
-                        </SelectContent>
+                        <SelectContent><SelectItem value="unassigned">Unassigned</SelectItem>{members.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-1.5"><Label>Due date</Label>
@@ -369,14 +384,12 @@ const Chores = () => {
       </header>
 
       <main className="container mx-auto px-4 sm:px-6 py-8 space-y-6">
-        <div className="grid grid-cols-3 gap-4">
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 gap-4">
           <Card><CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10 text-destructive"><AlertTriangle className="h-5 w-5" /></div>
             <div><p className="text-2xl font-bold">{overdueItems.length}</p><p className="text-xs text-muted-foreground">Overdue</p></div>
-          </CardContent></Card>
-          <Card><CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"><CalendarDays className="h-5 w-5" /></div>
-            <div><p className="text-2xl font-bold">{todayItems.length}</p><p className="text-xs text-muted-foreground">Due Today</p></div>
           </CardContent></Card>
           <Card><CardContent className="flex items-center gap-3 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-muted-foreground"><ClipboardList className="h-5 w-5" /></div>
@@ -384,84 +397,71 @@ const Chores = () => {
           </CardContent></Card>
         </div>
 
+        {/* Overdue */}
         {overdueItems.length > 0 && (
           <Card className="border-destructive/30">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-destructive text-lg"><AlertTriangle className="h-5 w-5" /> Overdue</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">{overdueItems.map(renderDetailItem)}</CardContent>
+            <CardContent className="space-y-2">{overdueItems.map(renderItem)}</CardContent>
           </Card>
         )}
 
-        <Card className="border-primary/30">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <CalendarDays className="h-5 w-5 text-primary" /> Today — {format(today, "EEEE, MMMM d")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {todayItems.length === 0 && noDateItems.length === 0 ? (
-              <p className="text-muted-foreground text-center py-6">Nothing due today — you're all caught up! 🎉</p>
-            ) : (
-              <>
-                {todayItems.map(renderDetailItem)}
-                {noDateItems.length > 0 && (
-                  <div className="pt-2 border-t mt-3">
-                    <p className="text-xs font-medium text-muted-foreground mb-2">No due date</p>
-                    {noDateItems.map(renderDetailItem)}
-                  </div>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-lg"><Clock className="h-5 w-5 text-muted-foreground" /> Coming Up</CardTitle>
-              <Select value={String(lookAheadDays)} onValueChange={(v) => setLookAheadDays(Number(v))}>
-                <SelectTrigger className="w-[130px] h-8 text-xs"><span>Next {lookAheadDays} days</span></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="7">Next 7 days</SelectItem>
-                  <SelectItem value="14">Next 14 days</SelectItem>
-                  <SelectItem value="30">Next 30 days</SelectItem>
-                </SelectContent>
-              </Select>
+        {/* Week strip */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <Button variant="outline" size="icon" onClick={() => setWeekOffset(w => w - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+            <div className="flex gap-1.5">
+              {weekDates.map((d) => {
+                const isToday2   = isSameDay(d, today);
+                const isSelected = isSameDay(d, selectedDate);
+                const hasItems   = allIncomplete.some(item => { const pd = parseDateSafe(item.due_date); return pd && isSameDay(pd, d); });
+                return (
+                  <button key={d.toISOString()} onClick={() => setSelectedDate(d)}
+                    className={`flex flex-col items-center gap-1 px-2 py-1.5 rounded-xl transition-colors ${isSelected ? "bg-primary/10 ring-1 ring-primary/40" : "hover:bg-muted/60"}`}>
+                    <span className="text-[10px] text-muted-foreground">{DAY_NAMES[d.getDay()]}</span>
+                    <span className={`text-sm font-semibold w-7 h-7 flex items-center justify-center rounded-full ${isToday2 ? "bg-primary text-primary-foreground" : isSelected ? "text-primary" : "text-foreground"}`}>
+                      {d.getDate()}
+                    </span>
+                    {hasItems && <span className="w-1.5 h-1.5 rounded-full bg-primary/60" />}
+                  </button>
+                );
+              })}
             </div>
-          </CardHeader>
-          <CardContent>
-            {futureDays.every(d => d.items.length === 0) ? (
-              <p className="text-muted-foreground text-center py-4">Nothing scheduled for the next {lookAheadDays} days.</p>
-            ) : (
-              <div className="space-y-1">
-                {futureDays.map(({ date, items }) => {
-                  if (items.length === 0) return null;
-                  const isSelected = selectedDate && isSameDay(date, selectedDate);
-                  return (
-                    <div key={date.toISOString()}>
-                      <button
-                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left transition-colors hover:bg-accent/50 ${isSelected ? "bg-accent" : ""}`}
-                        onClick={() => setSelectedDate(isSelected ? null : date)}
-                      >
-                        <span className="text-sm font-medium text-foreground">{format(date, "EEE, MMM d")}</span>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary" className="text-xs">{items.length} item{items.length !== 1 ? "s" : ""}</Badge>
-                          <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isSelected ? "rotate-90" : ""}`} />
-                        </div>
-                      </button>
-                      {isSelected && (
-                        <div className="pl-4 pr-2 pb-2 space-y-2 mt-1">
-                          {selectedDateItems.map(renderDetailItem)}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+            <Button variant="outline" size="icon" onClick={() => setWeekOffset(w => w + 1)}><ChevronRight className="h-4 w-4" /></Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <p className="font-semibold text-foreground">{format(selectedDate, "EEEE, MMMM d")}</p>
+            {isSelectedToday && <Badge variant="outline" className="text-xs text-primary border-primary/30">Today</Badge>}
+            {!isSelectedToday && (
+              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-6 px-2"
+                onClick={() => { setSelectedDate(today); setWeekOffset(0); }}>
+                Back to today
+              </Button>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+
+        {/* Morning / Afternoon / Evening */}
+        {TOD_ORDER.map((tod) => {
+          const { label, icon } = TOD_META[tod];
+          const items = itemsByTod[tod];
+          return (
+            <Card key={tod}>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  {icon}{label}
+                  {items.length > 0 && <Badge variant="secondary" className="ml-auto text-xs">{items.length}</Badge>}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {items.length === 0
+                  ? <p className="text-sm text-muted-foreground text-center py-3">Nothing scheduled</p>
+                  : items.map(renderItem)}
+              </CardContent>
+            </Card>
+          );
+        })}
       </main>
 
       {/* Edit Chore Dialog */}
@@ -488,10 +488,7 @@ const Chores = () => {
               <div className="space-y-1.5"><Label>Assign to</Label>
                 <Select value={editTaskForm.assigneeId} onValueChange={(v) => setEditTaskForm({ ...editTaskForm, assigneeId: v })}>
                   <SelectTrigger><span>{editTaskForm.assigneeId === "unassigned" ? "Unassigned" : getMemberName(editTaskForm.assigneeId)}</span></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unassigned">Unassigned</SelectItem>
-                    {members.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
-                  </SelectContent>
+                  <SelectContent><SelectItem value="unassigned">Unassigned</SelectItem>{members.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5"><Label>Due date</Label>

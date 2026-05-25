@@ -9,9 +9,9 @@ const router = Router();
 router.get("/", async (_req, res) => {
   try {
     const pool = await getPool();
-    const result = await pool
-      .request()
-      .query("SELECT id, title, description, assignee_id, completed, completed_at, created_at, due_date, start_date, end_date, recurrence FROM dbo.chores ORDER BY due_date, created_at");
+    const result = await pool.request().query(
+      "SELECT id, title, description, assignee_id, completed, completed_at, created_at, due_date, start_date, end_date, recurrence, time_of_day FROM dbo.chores ORDER BY due_date, created_at"
+    );
     res.json(result.recordset);
   } catch (err) {
     console.error(err);
@@ -19,25 +19,25 @@ router.get("/", async (_req, res) => {
   }
 });
 
-// POST create chore — generates all instances for recurring chores
+// POST create chore
 router.post("/", async (req, res) => {
-  const { title, description, assignee_id, due_date, start_date, end_date, recurrence } = req.body as {
+  const { title, description, assignee_id, due_date, start_date, end_date, recurrence, time_of_day } = req.body as {
     title?: string; description?: string; assignee_id?: string;
-    due_date?: string; start_date?: string; end_date?: string; recurrence?: string;
+    due_date?: string; start_date?: string; end_date?: string;
+    recurrence?: string; time_of_day?: string;
   };
   if (!title || !title.trim()) return res.status(400).json({ error: "title is required" });
 
   try {
     const pool = await getPool();
     const freq = recurrence || "none";
+    const tod  = time_of_day || "afternoon";
 
-    // For recurring chores, generate all instances
     if (freq !== "none" && start_date && end_date) {
       const start = new Date(start_date);
-      const end = new Date(end_date);
+      const end   = new Date(end_date);
       const dates: Date[] = [];
       const cur = new Date(start);
-
       while (cur <= end) {
         dates.push(new Date(cur));
         if (freq === "daily")        cur.setDate(cur.getDate() + 1);
@@ -45,7 +45,6 @@ router.post("/", async (req, res) => {
         else if (freq === "monthly") cur.setMonth(cur.getMonth() + 1);
         else break;
       }
-
       const ids: string[] = [];
       for (const d of dates) {
         const id = uuidv4();
@@ -58,14 +57,14 @@ router.post("/", async (req, res) => {
           .input("start_date",  sql.Date,             start)
           .input("end_date",    sql.Date,             end)
           .input("recurrence",  sql.NVarChar(20),     freq)
-          .query(`INSERT INTO dbo.chores (id, title, description, assignee_id, due_date, start_date, end_date, recurrence)
-                  VALUES (@id, @title, @description, @assignee_id, @due_date, @start_date, @end_date, @recurrence)`);
+          .input("time_of_day", sql.NVarChar(20),     tod)
+          .query(`INSERT INTO dbo.chores (id, title, description, assignee_id, due_date, start_date, end_date, recurrence, time_of_day)
+                  VALUES (@id, @title, @description, @assignee_id, @due_date, @start_date, @end_date, @recurrence, @time_of_day)`);
         ids.push(id);
       }
       return res.status(201).json({ ids, count: ids.length });
     }
 
-    // One-time chore
     const id = uuidv4();
     await pool.request()
       .input("id",          sql.UniqueIdentifier, id)
@@ -76,8 +75,9 @@ router.post("/", async (req, res) => {
       .input("start_date",  sql.Date,             null)
       .input("end_date",    sql.Date,             null)
       .input("recurrence",  sql.NVarChar(20),     "none")
-      .query(`INSERT INTO dbo.chores (id, title, description, assignee_id, due_date, start_date, end_date, recurrence)
-              VALUES (@id, @title, @description, @assignee_id, @due_date, @start_date, @end_date, @recurrence)`);
+      .input("time_of_day", sql.NVarChar(20),     tod)
+      .query(`INSERT INTO dbo.chores (id, title, description, assignee_id, due_date, start_date, end_date, recurrence, time_of_day)
+              VALUES (@id, @title, @description, @assignee_id, @due_date, @start_date, @end_date, @recurrence, @time_of_day)`);
     res.status(201).json({ id });
   } catch (err) {
     console.error(err);
@@ -87,10 +87,10 @@ router.post("/", async (req, res) => {
 
 // PUT update chore
 router.put("/:id", async (req, res) => {
-  const { title, description, assignee_id, due_date, start_date, end_date, recurrence, completed } = req.body as {
+  const { title, description, assignee_id, due_date, start_date, end_date, recurrence, completed, time_of_day } = req.body as {
     title?: string; description?: string; assignee_id?: string;
     due_date?: string; start_date?: string; end_date?: string;
-    recurrence?: string; completed?: boolean;
+    recurrence?: string; completed?: boolean; time_of_day?: string;
   };
   try {
     const pool = await getPool();
@@ -103,6 +103,7 @@ router.put("/:id", async (req, res) => {
       .input("start_date",  sql.Date,             start_date || null)
       .input("end_date",    sql.Date,             end_date || null)
       .input("recurrence",  sql.NVarChar(20),     recurrence || null)
+      .input("time_of_day", sql.NVarChar(20),     time_of_day || null)
       .input("completed",   sql.Bit,              completed ?? null)
       .input("completed_at",sql.DateTime2,        completed ? new Date() : null)
       .query(`UPDATE dbo.chores SET
@@ -113,6 +114,7 @@ router.put("/:id", async (req, res) => {
         start_date   = @start_date,
         end_date     = @end_date,
         recurrence   = COALESCE(@recurrence, recurrence),
+        time_of_day  = COALESCE(@time_of_day, time_of_day),
         completed    = COALESCE(@completed, completed),
         completed_at = CASE WHEN @completed IS NOT NULL THEN @completed_at ELSE completed_at END
       WHERE id = @id`);
