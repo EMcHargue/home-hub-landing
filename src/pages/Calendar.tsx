@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowLeft, ListChecks, UtensilsCrossed, ClipboardList, CalendarDays, Sun, Cloud, Moon } from "lucide-react";
 import { api, ApiMember, ApiPlannedMeal, ApiRecipe } from "@/lib/api";
 import { format, startOfDay, startOfMonth, endOfMonth, isSameDay, isBefore } from "date-fns";
@@ -38,6 +39,7 @@ type TODSection = {
 };
 
 const CalendarPage = () => {
+  const qc = useQueryClient();
   const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
   const [viewMonth, setViewMonth] = useState<Date>(startOfMonth(new Date()));
 
@@ -52,6 +54,16 @@ const CalendarPage = () => {
     queryFn:  () => api.getPlannedMeals(monthStart, monthEnd),
   });
   const { data: recipes = [] } = useQuery<ApiRecipe[]>({ queryKey: ["recipes"], queryFn: () => api.getRecipes() });
+
+  const completeChore = useMutation({
+    mutationFn: (id: string) => fetch(`/api/chores/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ completed: true }) }).then((r) => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["chores"] }),
+  });
+
+  const completeTask = useMutation({
+    mutationFn: (id: string) => fetch(`/api/tasks/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ completed: true }) }).then((r) => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+  });
 
   const memberName = (id: string | null) =>
     !id ? "Unassigned" : members.find((m) => m.id === id)?.name ?? "Unknown";
@@ -146,13 +158,21 @@ const CalendarPage = () => {
               <CardContent className="space-y-2">
                 {overdue.chores.map((c) => (
                   <div key={c.id} className="flex items-center justify-between rounded-md border bg-card px-3 py-2 text-sm">
-                    <div className="flex items-center gap-2"><ListChecks className="h-4 w-4 text-primary" /><span>{c.title}</span></div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox checked={c.completed} onCheckedChange={() => completeChore.mutate(c.id)} />
+                      <ListChecks className="h-4 w-4 text-primary" />
+                      <span>{c.title}</span>
+                    </div>
                     <span className="text-xs text-muted-foreground">{c.due_date?.slice(0, 10)}</span>
                   </div>
                 ))}
                 {overdue.tasks.map((t) => (
                   <div key={t.id} className="flex items-center justify-between rounded-md border bg-card px-3 py-2 text-sm">
-                    <div className="flex items-center gap-2"><ClipboardList className="h-4 w-4 text-primary" /><span>{t.title}</span></div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox checked={t.completed} onCheckedChange={() => completeTask.mutate(t.id)} />
+                      <ClipboardList className="h-4 w-4 text-primary" />
+                      <span>{t.title}</span>
+                    </div>
                     <span className="text-xs text-muted-foreground">{t.due_date?.slice(0, 10)}</span>
                   </div>
                 ))}
@@ -193,6 +213,7 @@ const CalendarPage = () => {
                       {section.chores.map((c) => (
                         <div key={c.id} className="flex items-center justify-between rounded-md border bg-card px-3 py-2">
                           <div className="flex items-center gap-2">
+                            <Checkbox checked={c.completed} onCheckedChange={() => completeChore.mutate(c.id)} />
                             <ListChecks className="h-4 w-4 text-primary shrink-0" />
                             <span className={`text-sm ${c.completed ? "line-through text-muted-foreground" : ""}`}>{c.title}</span>
                             {c.recurrence && c.recurrence !== "none" && <Badge variant="outline" className="text-xs">{c.recurrence}</Badge>}
@@ -203,6 +224,7 @@ const CalendarPage = () => {
                       {section.tasks.map((t) => (
                         <div key={t.id} className="flex items-center justify-between rounded-md border bg-card px-3 py-2">
                           <div className="flex items-center gap-2">
+                            <Checkbox checked={t.completed} onCheckedChange={() => completeTask.mutate(t.id)} />
                             <ClipboardList className="h-4 w-4 text-primary shrink-0" />
                             <span className={`text-sm ${t.completed ? "line-through text-muted-foreground" : ""}`}>{t.title}</span>
                           </div>
