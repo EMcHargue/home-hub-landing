@@ -9,7 +9,7 @@ import { ArrowLeft, ListChecks, UtensilsCrossed, ClipboardList, CalendarDays, Su
 import { api, ApiMember, ApiPlannedMeal, ApiRecipe } from "@/lib/api";
 import { format, startOfDay, startOfMonth, endOfMonth, isSameDay, isBefore } from "date-fns";
 
-type Chore = { id: string; title: string; assignee_id: string | null; completed: boolean; due_date: string | null; recurrence?: string; };
+type Chore = { id: string; title: string; assignee_id: string | null; completed: boolean; due_date: string | null; recurrence?: string; time_of_day?: string | null; };
 type Task  = { id: string; title: string; assignee_id: string | null; completed: boolean; due_date: string | null; };
 
 function parseDateSafe(d: string | null): Date | null {
@@ -62,7 +62,6 @@ const CalendarPage = () => {
   const today = startOfDay(new Date());
   const selectedKey = format(selectedDate, "yyyy-MM-dd");
 
-  // Aggregate items per day for dot indicators
   const itemsByDay = useMemo(() => {
     const map = new Map<string, { chores: Chore[]; tasks: Task[]; meals: ApiPlannedMeal[] }>();
     const ensure = (key: string) => {
@@ -75,7 +74,6 @@ const CalendarPage = () => {
     return map;
   }, [chores, tasks, meals]);
 
-  // Build Morning / Afternoon / Evening sections for selected date
   const todSections = useMemo((): TODSection[] => {
     const dayItems = itemsByDay.get(selectedKey) ?? { chores: [], tasks: [], meals: [] };
 
@@ -85,13 +83,15 @@ const CalendarPage = () => {
     const sections = { morning, afternoon, evening };
 
     dayItems.meals.forEach((m) => { sections[SLOT_TO_TOD[m.slot] ?? "afternoon"].meals.push(m); });
-    dayItems.chores.forEach((c) => afternoon.chores.push(c));
-    dayItems.tasks.forEach((t)  => afternoon.tasks.push(t));
+    dayItems.chores.forEach((c) => {
+      const tod = (c.time_of_day as "morning" | "afternoon" | "evening") ?? "afternoon";
+      sections[tod].chores.push(c);
+    });
+    dayItems.tasks.forEach((t) => afternoon.tasks.push(t));
 
     return [morning, afternoon, evening];
   }, [itemsByDay, selectedKey]);
 
-  // Overdue
   const overdue = useMemo(() => ({
     chores: chores.filter((c) => { const d = parseDateSafe(c.due_date); return !c.completed && d && isBefore(d, today); }),
     tasks:  tasks.filter((t)  => { const d = parseDateSafe(t.due_date); return !t.completed && d && isBefore(d, today); }),
@@ -119,8 +119,6 @@ const CalendarPage = () => {
       </header>
 
       <main className="container mx-auto px-6 py-8 grid gap-6 lg:grid-cols-[auto_1fr]">
-
-        {/* Left: calendar + overdue */}
         <div className="space-y-6">
           <Card className="shadow-[var(--card-shadow)]">
             <CardContent className="p-2">
@@ -163,7 +161,6 @@ const CalendarPage = () => {
           )}
         </div>
 
-        {/* Right: day detail - Morning / Afternoon / Evening */}
         <Card className="shadow-[var(--card-shadow)]">
           <CardHeader>
             <CardTitle className="font-serif text-2xl">
@@ -219,7 +216,6 @@ const CalendarPage = () => {
             })}
           </CardContent>
         </Card>
-
       </main>
     </div>
   );
