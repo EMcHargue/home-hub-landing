@@ -29,10 +29,10 @@ const SLOT_TO_TOD: Record<string, "morning" | "afternoon" | "evening"> = {
 };
 
 type TODSection = {
-  key:   "morning" | "afternoon" | "evening";
-  label: string;
-  icon:  React.ReactNode;
-  meals: ApiPlannedMeal[];
+  key:    "morning" | "afternoon" | "evening";
+  label:  string;
+  icon:   React.ReactNode;
+  meals:  ApiPlannedMeal[];
   chores: Chore[];
   tasks:  Task[];
 };
@@ -59,6 +59,9 @@ const CalendarPage = () => {
   const recipeName = (id: number | null) =>
     !id ? null : recipes.find((r) => r.id === id)?.name ?? null;
 
+  const today = startOfDay(new Date());
+  const selectedKey = format(selectedDate, "yyyy-MM-dd");
+
   // Aggregate items per day for dot indicators
   const itemsByDay = useMemo(() => {
     const map = new Map<string, { chores: Chore[]; tasks: Task[]; meals: ApiPlannedMeal[] }>();
@@ -72,29 +75,23 @@ const CalendarPage = () => {
     return map;
   }, [chores, tasks, meals]);
 
-  const selectedKey   = format(selectedDate, "yyyy-MM-dd");
-  const selectedItems = itemsByDay.get(selectedKey) ?? { chores: [], tasks: [], meals: [] };
-
-  // Build Morning / Afternoon / Evening sections
+  // Build Morning / Afternoon / Evening sections for selected date
   const todSections = useMemo((): TODSection[] => {
+    const dayItems = itemsByDay.get(selectedKey) ?? { chores: [], tasks: [], meals: [] };
+
     const morning:   TODSection = { key: "morning",   label: "Morning",   icon: <Sun   className="h-4 w-4 text-yellow-500" />, meals: [], chores: [], tasks: [] };
     const afternoon: TODSection = { key: "afternoon", label: "Afternoon", icon: <Cloud className="h-4 w-4 text-blue-400"   />, meals: [], chores: [], tasks: [] };
     const evening:   TODSection = { key: "evening",   label: "Evening",   icon: <Moon  className="h-4 w-4 text-indigo-400" />, meals: [], chores: [], tasks: [] };
     const sections = { morning, afternoon, evening };
 
-    selectedItems.meals.forEach((m) => {
-      const tod = SLOT_TO_TOD[m.slot] ?? "afternoon";
-      sections[tod].meals.push(m);
-    });
-    // All chores & tasks go to afternoon for now
-    selectedItems.chores.forEach((c) => afternoon.chores.push(c));
-    selectedItems.tasks.forEach((t)  => afternoon.tasks.push(t));
+    dayItems.meals.forEach((m) => { sections[SLOT_TO_TOD[m.slot] ?? "afternoon"].meals.push(m); });
+    dayItems.chores.forEach((c) => afternoon.chores.push(c));
+    dayItems.tasks.forEach((t)  => afternoon.tasks.push(t));
 
     return [morning, afternoon, evening];
-  }, [selectedItems]);
+  }, [itemsByDay, selectedKey]);
 
   // Overdue
-  const today = startOfDay(new Date());
   const overdue = useMemo(() => ({
     chores: chores.filter((c) => { const d = parseDateSafe(c.due_date); return !c.completed && d && isBefore(d, today); }),
     tasks:  tasks.filter((t)  => { const d = parseDateSafe(t.due_date); return !t.completed && d && isBefore(d, today); }),
@@ -123,7 +120,7 @@ const CalendarPage = () => {
 
       <main className="container mx-auto px-6 py-8 grid gap-6 lg:grid-cols-[auto_1fr]">
 
-        {/* Left column: calendar + overdue */}
+        {/* Left: calendar + overdue */}
         <div className="space-y-6">
           <Card className="shadow-[var(--card-shadow)]">
             <CardContent className="p-2">
@@ -166,7 +163,7 @@ const CalendarPage = () => {
           )}
         </div>
 
-        {/* Right column: day detail with Morning/Afternoon/Evening */}
+        {/* Right: day detail - Morning / Afternoon / Evening */}
         <Card className="shadow-[var(--card-shadow)]">
           <CardHeader>
             <CardTitle className="font-serif text-2xl">
@@ -176,46 +173,36 @@ const CalendarPage = () => {
           </CardHeader>
           <CardContent className="space-y-6">
             {todSections.map((section) => {
-              const totalItems = section.meals.length + section.chores.length + section.tasks.length;
+              const total = section.meals.length + section.chores.length + section.tasks.length;
               return (
                 <section key={section.key}>
                   <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
                     {section.icon}{section.label}
-                    {totalItems > 0 && <Badge variant="secondary" className="ml-1">{totalItems}</Badge>}
+                    {total > 0 && <Badge variant="secondary" className="ml-1">{total}</Badge>}
                   </h3>
-
-                  {totalItems === 0 ? (
+                  {total === 0 ? (
                     <p className="text-sm text-muted-foreground pl-6">Nothing scheduled</p>
                   ) : (
                     <div className="space-y-2 pl-2">
-                      {/* Meals */}
                       {section.meals.map((m) => (
-                        <div key={m.id} className="flex items-center justify-between rounded-md border bg-card px-3 py-2">
-                          <div className="flex items-center gap-2">
-                            <UtensilsCrossed className="h-4 w-4 text-primary shrink-0" />
-                            <div>
-                              <p className="text-sm font-medium">{recipeName(m.recipe_id) ?? m.custom_name ?? "Untitled meal"}</p>
-                              <p className="text-xs text-muted-foreground capitalize">{m.slot}</p>
-                            </div>
+                        <div key={m.id} className="flex items-center gap-2 rounded-md border bg-card px-3 py-2">
+                          <UtensilsCrossed className="h-4 w-4 text-primary shrink-0" />
+                          <div>
+                            <p className="text-sm font-medium">{recipeName(m.recipe_id) ?? m.custom_name ?? "Untitled meal"}</p>
+                            <p className="text-xs text-muted-foreground capitalize">{m.slot}</p>
                           </div>
                         </div>
                       ))}
-
-                      {/* Chores */}
                       {section.chores.map((c) => (
                         <div key={c.id} className="flex items-center justify-between rounded-md border bg-card px-3 py-2">
                           <div className="flex items-center gap-2">
                             <ListChecks className="h-4 w-4 text-primary shrink-0" />
                             <span className={`text-sm ${c.completed ? "line-through text-muted-foreground" : ""}`}>{c.title}</span>
-                            {c.recurrence && c.recurrence !== "none" && (
-                              <Badge variant="outline" className="text-xs">{c.recurrence}</Badge>
-                            )}
+                            {c.recurrence && c.recurrence !== "none" && <Badge variant="outline" className="text-xs">{c.recurrence}</Badge>}
                           </div>
                           <span className="text-xs text-muted-foreground">{memberName(c.assignee_id)}</span>
                         </div>
                       ))}
-
-                      {/* Tasks */}
                       {section.tasks.map((t) => (
                         <div key={t.id} className="flex items-center justify-between rounded-md border bg-card px-3 py-2">
                           <div className="flex items-center gap-2">
