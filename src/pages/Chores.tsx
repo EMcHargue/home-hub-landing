@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+﻿import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ type Chore = {
 type Task = {
   id: string; title: string; description: string | null; assignee_id: string | null;
   completed: boolean; completed_at: string | null; created_at: string; due_date: string | null;
+  time_of_day: string | null;
 };
 
 type UnifiedItem = {
@@ -42,7 +43,7 @@ const END_OF_YEAR = `${new Date().getFullYear()}-12-31`;
 const TODAY_STR   = format(new Date(), "yyyy-MM-dd");
 
 const BLANK_CHORE = { title: "", description: "", assigneeId: "unassigned", dueDate: "", startDate: TODAY_STR, endDate: END_OF_YEAR, recurrence: "none" as RecurrenceFrequency, timeOfDay: "afternoon" };
-const BLANK_TASK  = { title: "", description: "", assigneeId: "unassigned", dueDate: "" };
+const BLANK_TASK  = { title: "", description: "", assigneeId: "unassigned", dueDate: "", timeOfDay: "afternoon" };
 
 const TOD_META: Record<TimeOfDay, { label: string; icon: React.ReactNode }> = {
   morning:   { label: "Morning",   icon: <Sun   className="h-4 w-4 text-yellow-500" /> },
@@ -95,7 +96,7 @@ const Chores = () => {
     } catch { return null; }
   }
 
-  // ── Mutations ──────────────────────────────────────────────────────────────
+  // â”€â”€ Mutations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const createChoreMutation = useMutation({
     mutationFn: (body: object) =>
       fetch("/api/chores", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json()),
@@ -132,7 +133,7 @@ const Chores = () => {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tasks"] }); toast({ title: "Task deleted" }); },
   });
 
-  // ── Form handlers ──────────────────────────────────────────────────────────
+  // â”€â”€ Form handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const addChore = () => {
     if (!choreForm.title.trim()) { toast({ title: "Chore title is required", variant: "destructive" }); return; }
     const isRecurring = choreForm.recurrence !== "none";
@@ -184,11 +185,12 @@ const Chores = () => {
       title: taskForm.title.trim(), description: taskForm.description.trim() || null,
       assignee_id: taskForm.assigneeId === "unassigned" ? null : taskForm.assigneeId,
       due_date: taskForm.dueDate || null,
+      time_of_day: taskForm.timeOfDay,
     }, { onSuccess: () => { setTaskForm(BLANK_TASK); setTaskOpen(false); } });
   };
 
   const openEditTask = (task: Task) => {
-    setEditTaskForm({ title: task.title, description: task.description ?? "", assigneeId: task.assignee_id ?? "unassigned", dueDate: task.due_date ? task.due_date.slice(0, 10) : "" });
+    setEditTaskForm({ title: task.title, description: task.description ?? "", assigneeId: task.assignee_id ?? "unassigned", dueDate: task.due_date ? task.due_date.slice(0, 10) : "", timeOfDay: task.time_of_day ?? "afternoon" });
     setEditTask(task);
   };
 
@@ -199,10 +201,11 @@ const Chores = () => {
       description: editTaskForm.description.trim() || null,
       assignee_id: editTaskForm.assigneeId === "unassigned" ? null : editTaskForm.assigneeId,
       due_date: editTaskForm.dueDate || null,
+      time_of_day: editTaskForm.timeOfDay,
     }, { onSuccess: () => setEditTask(null) });
   };
 
-  // ── Derived data ───────────────────────────────────────────────────────────
+  // â”€â”€ Derived data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const allIncomplete: UnifiedItem[] = useMemo(() => [
     ...chores.filter(c => !c.completed).map(c => ({ ...c, type: "chore" as const })),
     ...tasks.filter(t  => !t.completed).map(t => ({ ...t, type: "task"  as const })),
@@ -231,7 +234,7 @@ const Chores = () => {
     return map;
   }, [selectedDayItems, noDateItems, selectedDate]);
 
-  // ── Chore form fields ──────────────────────────────────────────────────────
+  // â”€â”€ Chore form fields â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const renderChoreFields = (form: typeof BLANK_CHORE, setForm: (f: typeof BLANK_CHORE) => void) => (
     <div className="space-y-4 py-2">
       <div className="space-y-1.5"><Label>Title *</Label>
@@ -289,7 +292,7 @@ const Chores = () => {
     </div>
   );
 
-  // ── Item card ──────────────────────────────────────────────────────────────
+  // â”€â”€ Item card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const renderItem = (item: UnifiedItem) => {
     const isChore   = item.type === "chore";
     const isOverdue = (() => { const d = parseDateSafe(item.due_date); return d && isBefore(d, today); })();
@@ -370,10 +373,19 @@ const Chores = () => {
                         <SelectTrigger><span>{taskForm.assigneeId === "unassigned" ? "Unassigned" : getMemberName(taskForm.assigneeId)}</span></SelectTrigger>
                         <SelectContent><SelectItem value="unassigned">Unassigned</SelectItem>{members.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
                       </Select>
-                    </div>
-                    <div className="space-y-1.5"><Label>Due date</Label>
+                    </div>                    <div className="space-y-1.5"><Label>Due date</Label>
                       <Input type="date" value={taskForm.dueDate} onChange={(e) => setTaskForm({ ...taskForm, dueDate: e.target.value })} />
                     </div>
+                  </div>
+                  <div className="space-y-1.5"><Label>Time of day</Label>
+                    <Select value={taskForm.timeOfDay} onValueChange={(v) => setTaskForm({ ...taskForm, timeOfDay: v })}>
+                      <SelectTrigger><span className="capitalize">{taskForm.timeOfDay}</span></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="morning">Morning</SelectItem>
+                        <SelectItem value="afternoon">Afternoon</SelectItem>
+                        <SelectItem value="evening">Evening</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <DialogFooter><Button onClick={addTask} disabled={createTaskMutation.isPending}>Create</Button></DialogFooter>
@@ -491,9 +503,19 @@ const Chores = () => {
                   <SelectContent><SelectItem value="unassigned">Unassigned</SelectItem>{members.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5"><Label>Due date</Label>
+                            <div className="space-y-1.5"><Label>Due date</Label>
                 <Input type="date" value={editTaskForm.dueDate} onChange={(e) => setEditTaskForm({ ...editTaskForm, dueDate: e.target.value })} />
               </div>
+            </div>
+            <div className="space-y-1.5"><Label>Time of day</Label>
+              <Select value={editTaskForm.timeOfDay} onValueChange={(v) => setEditTaskForm({ ...editTaskForm, timeOfDay: v })}>
+                <SelectTrigger><span className="capitalize">{editTaskForm.timeOfDay}</span></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="morning">Morning</SelectItem>
+                  <SelectItem value="afternoon">Afternoon</SelectItem>
+                  <SelectItem value="evening">Evening</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter><Button onClick={saveEditTask} disabled={updateTaskMutation.isPending}>Save</Button></DialogFooter>
@@ -504,3 +526,5 @@ const Chores = () => {
 };
 
 export default Chores;
+
+
