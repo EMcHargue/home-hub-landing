@@ -1,4 +1,4 @@
-﻿import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Calendar } from "@/components/ui/calendar";
@@ -9,18 +9,18 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ArrowLeft, ListChecks, UtensilsCrossed, ClipboardList, CalendarDays,
-  Sun, Cloud, Moon, Pencil, Archive, Snowflake, Refrigerator,
+  Sun, Cloud, Moon, Pencil, Archive, Snowflake, Refrigerator, Plus, Trash2, Clock,
 } from "lucide-react";
 import { api, ApiMember, ApiPlannedMeal, ApiRecipe } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfDay, startOfMonth, endOfMonth, isSameDay, isBefore } from "date-fns";
 
 type Chore = { id: string; title: string; assignee_id: string | null; completed: boolean; due_date: string | null; recurrence?: string; time_of_day?: string | null; };
-type Task  = { id: string; title: string; assignee_id: string | null; completed: boolean; due_date: string | null; time_of_day?: string | null; };
+type Task  = { id: string; title: string; description?: string | null; assignee_id: string | null; completed: boolean; due_date: string | null; time_of_day?: string | null; };
 
 function parseDateSafe(d: string | null): Date | null {
   if (!d) return null;
@@ -39,6 +39,25 @@ const SLOT_LABELS: Record<string, string> = {
   breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner",
 };
 
+// ── Local-only hour-of-day overrides (no backend column) ──
+const HOUR_STORE_KEY = "calendar_item_hours_v1";
+type HourMap = Record<string, string>; // key: `task:${id}` | `chore:${id}` -> "HH:mm"
+const loadHours = (): HourMap => {
+  try { return JSON.parse(localStorage.getItem(HOUR_STORE_KEY) ?? "{}"); } catch { return {}; }
+};
+const saveHours = (m: HourMap) => localStorage.setItem(HOUR_STORE_KEY, JSON.stringify(m));
+
+const HOURS = Array.from({ length: 17 }, (_, i) => i + 6); // 6 AM – 10 PM
+const fmtHour = (h: number) => {
+  const d = new Date(); d.setHours(h, 0, 0, 0);
+  return format(d, "h a");
+};
+const hourFromTime = (t?: string | null): number | null => {
+  if (!t) return null;
+  const [h] = t.split(":").map(Number);
+  return Number.isFinite(h) ? h : null;
+};
+
 type TODSection = {
   key: "morning" | "afternoon" | "evening";
   label: string; icon: React.ReactNode;
@@ -50,6 +69,15 @@ const CalendarPage = () => {
   const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
   const [viewMonth, setViewMonth] = useState<Date>(startOfMonth(new Date()));
+  const [hourMap, setHourMap] = useState<HourMap>(() => loadHours());
+  const setHour = (key: string, time: string | null) => {
+    setHourMap((prev) => {
+      const next = { ...prev };
+      if (!time) delete next[key]; else next[key] = time;
+      saveHours(next);
+      return next;
+    });
+  };
 
   const monthStart = format(startOfMonth(viewMonth), "yyyy-MM-dd");
   const monthEnd   = format(endOfMonth(viewMonth),   "yyyy-MM-dd");
@@ -61,14 +89,13 @@ const CalendarPage = () => {
   });
   useEffect(() => { if (!userId) api.getOrCreateUserId().then(setUserId).catch(() => {}); }, [userId]);
 
-  // â”€â”€ Queries â”€â”€
+  // ── Queries ──
   const { data: members  = [] } = useQuery<ApiMember[]>({ queryKey: ["members"],  queryFn: () => api.getMembers() });
   const { data: chores   = [] } = useQuery<Chore[]>({    queryKey: ["chores"],    queryFn: () => fetch("/api/chores").then((r) => r.json()) });
   const { data: tasks    = [] } = useQuery<Task[]>({     queryKey: ["tasks"],     queryFn: () => fetch("/api/tasks").then((r) => r.json()) });
   const { data: meals    = [] } = useQuery<ApiPlannedMeal[]>({ queryKey: ["planned-meals", monthStart, monthEnd], queryFn: () => api.getPlannedMeals(monthStart, monthEnd) });
   const { data: recipes  = [] } = useQuery<ApiRecipe[]>({ queryKey: ["recipes"],  queryFn: () => api.getRecipes() });
   const { data: categories = [] } = useQuery({ queryKey: ["categories"], queryFn: () => api.getCategories() });
-  const { data: groups   = [] } = useQuery({ queryKey: ["pantry-groups"], queryFn: () => api.getGroups() });
 
   const leftoversCategoryId = useMemo(() => categories.find((c) => c.name.toLowerCase() === "leftovers")?.id ?? null, [categories]);
   useEffect(() => {
@@ -77,13 +104,29 @@ const CalendarPage = () => {
     }
   }, [categories, leftoversCategoryId]);
 
-  // â”€â”€ Mutations â”€â”€
+  // ── Mutations ──
   const completeChore = useMutation({
     mutationFn: (id: string) => fetch(`/api/chores/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ completed: true }) }).then((r) => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["chores"] }),
   });
   const completeTask = useMutation({
     mutationFn: (id: string) => fetch(`/api/tasks/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ completed: true }) }).then((r) => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+  });
+  const saveTask = useMutation({
+    mutationFn: async (payload: { id?: string; title: string; description: string | null; assignee_id: string | null; due_date: string | null; time_of_day: string; }) => {
+      const { id, ...body } = payload;
+      const url = id ? `/api/tasks/${id}` : `/api/tasks`;
+      const method = id ? "PUT" : "POST";
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["tasks"] }); },
+    onError: (err) => toast({ title: "Failed to save task", description: String(err), variant: "destructive" }),
+  });
+  const deleteTask = useMutation({
+    mutationFn: (id: string) => fetch(`/api/tasks/${id}`, { method: "DELETE" }).then((r) => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
   const updateMeal = useMutation({
@@ -100,7 +143,7 @@ const CalendarPage = () => {
     onError: (err) => toast({ title: "Failed to save leftover", description: String(err), variant: "destructive" }),
   });
 
-  // â”€â”€ Edit meal dialog â”€â”€
+  // ── Edit meal dialog ──
   const [editOpen, setEditOpen] = useState(false);
   const [editMeal, setEditMeal] = useState<ApiPlannedMeal | null>(null);
   const [editRecipeId, setEditRecipeId] = useState("");
@@ -125,7 +168,54 @@ const CalendarPage = () => {
     updateMeal.mutate({ id: editMeal.id, recipe_id, custom_name, link, ingredients }, { onSuccess: () => setEditOpen(false) });
   };
 
-  // â”€â”€ Leftover dialog â”€â”€
+  // ── Task dialog (add/edit) ──
+  type TaskDraft = {
+    id?: string; title: string; description: string;
+    assignee_id: string; time_of_day: "morning" | "afternoon" | "evening";
+    time: string; // "" or "HH:mm"
+  };
+  const emptyDraft = (): TaskDraft => ({ id: undefined, title: "", description: "", assignee_id: "unassigned", time_of_day: "afternoon", time: "" });
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [taskDraft, setTaskDraft] = useState<TaskDraft>(emptyDraft());
+
+  const openNewTask = (preset?: { hour?: number; tod?: "morning" | "afternoon" | "evening" }) => {
+    const d = emptyDraft();
+    if (preset?.hour !== undefined) d.time = `${String(preset.hour).padStart(2, "0")}:00`;
+    if (preset?.tod) d.time_of_day = preset.tod;
+    setTaskDraft(d);
+    setTaskDialogOpen(true);
+  };
+  const openEditTask = (t: Task) => {
+    setTaskDraft({
+      id: t.id,
+      title: t.title,
+      description: t.description ?? "",
+      assignee_id: t.assignee_id ?? "unassigned",
+      time_of_day: (t.time_of_day as "morning" | "afternoon" | "evening") ?? "afternoon",
+      time: hourMap[`task:${t.id}`] ?? "",
+    });
+    setTaskDialogOpen(true);
+  };
+  const confirmTask = () => {
+    if (!taskDraft.title.trim()) return;
+    const due_date = format(selectedDate, "yyyy-MM-dd");
+    saveTask.mutate({
+      id: taskDraft.id,
+      title: taskDraft.title.trim(),
+      description: taskDraft.description.trim() || null,
+      assignee_id: taskDraft.assignee_id === "unassigned" ? null : taskDraft.assignee_id,
+      due_date,
+      time_of_day: taskDraft.time_of_day,
+    }, {
+      onSuccess: (res: { id?: string }) => {
+        const id = taskDraft.id ?? res?.id;
+        if (id) setHour(`task:${id}`, taskDraft.time || null);
+        setTaskDialogOpen(false);
+      },
+    });
+  };
+
+  // ── Leftover dialog ──
   const [leftoverDialog, setLeftoverDialog] = useState<{ name: string; servings: string; frozen: boolean; refrigerated: boolean; expirationDate: string } | null>(null);
   const openLeftover = (meal: ApiPlannedMeal) => {
     const label = meal.custom_name ?? recipes.find((r) => r.id === meal.recipe_id)?.name ?? "Leftovers";
@@ -133,7 +223,7 @@ const CalendarPage = () => {
     setLeftoverDialog({ name: label, servings: String(recipe?.servings ?? 2), frozen: false, refrigerated: false, expirationDate: "" });
   };
 
-  // â”€â”€ Helpers â”€â”€
+  // ── Helpers ──
   const memberName = (id: string | null) => !id ? "Unassigned" : members.find((m) => m.id === id)?.name ?? "Unknown";
   const recipeName = (id: number | null) => !id ? null : recipes.find((r) => r.id === id)?.name ?? null;
   const mealLabel  = (m: ApiPlannedMeal) => recipeName(m.recipe_id) ?? m.custom_name ?? "Untitled meal";
@@ -141,7 +231,7 @@ const CalendarPage = () => {
   const today = startOfDay(new Date());
   const selectedKey = format(selectedDate, "yyyy-MM-dd");
 
-  // â”€â”€ Aggregation â”€â”€
+  // ── Aggregation ──
   const itemsByDay = useMemo(() => {
     const map = new Map<string, { chores: Chore[]; tasks: Task[]; meals: ApiPlannedMeal[] }>();
     const ensure = (key: string) => { if (!map.has(key)) map.set(key, { chores: [], tasks: [], meals: [] }); return map.get(key)!; };
@@ -151,17 +241,32 @@ const CalendarPage = () => {
     return map;
   }, [chores, tasks, meals]);
 
-  const todSections = useMemo((): TODSection[] => {
-    const dayItems = itemsByDay.get(selectedKey) ?? { chores: [], tasks: [], meals: [] };
+  const dayItems = itemsByDay.get(selectedKey) ?? { chores: [], tasks: [], meals: [] };
+
+  // Split day items into "hourly" (has hour) and "unscheduled" (no hour, grouped by TOD)
+  const { hourlyByHour, todSections } = useMemo(() => {
+    const hourly = new Map<number, { meals: ApiPlannedMeal[]; chores: Chore[]; tasks: Task[] }>();
+    const ensureH = (h: number) => { if (!hourly.has(h)) hourly.set(h, { meals: [], chores: [], tasks: [] }); return hourly.get(h)!; };
+
     const morning:   TODSection = { key: "morning",   label: "Morning",   icon: <Sun   className="h-4 w-4 text-yellow-500" />, meals: [], chores: [], tasks: [] };
     const afternoon: TODSection = { key: "afternoon", label: "Afternoon", icon: <Cloud className="h-4 w-4 text-blue-400"   />, meals: [], chores: [], tasks: [] };
     const evening:   TODSection = { key: "evening",   label: "Evening",   icon: <Moon  className="h-4 w-4 text-indigo-400" />, meals: [], chores: [], tasks: [] };
     const sections = { morning, afternoon, evening };
+
     dayItems.meals.forEach((m) => { sections[SLOT_TO_TOD[m.slot] ?? "afternoon"].meals.push(m); });
-    dayItems.chores.forEach((c) => { const tod = (c.time_of_day as "morning" | "afternoon" | "evening") ?? "afternoon"; sections[tod].chores.push(c); });
-    dayItems.tasks.forEach((t) => { const tod = (t.time_of_day as "morning" | "afternoon" | "evening") ?? "afternoon"; sections[tod].tasks.push(t); });
-    return [morning, afternoon, evening];
-  }, [itemsByDay, selectedKey]);
+    dayItems.chores.forEach((c) => {
+      const h = hourFromTime(hourMap[`chore:${c.id}`]);
+      if (h !== null) ensureH(h).chores.push(c);
+      else { const tod = (c.time_of_day as "morning" | "afternoon" | "evening") ?? "afternoon"; sections[tod].chores.push(c); }
+    });
+    dayItems.tasks.forEach((t) => {
+      const h = hourFromTime(hourMap[`task:${t.id}`]);
+      if (h !== null) ensureH(h).tasks.push(t);
+      else { const tod = (t.time_of_day as "morning" | "afternoon" | "evening") ?? "afternoon"; sections[tod].tasks.push(t); }
+    });
+
+    return { hourlyByHour: hourly, todSections: [morning, afternoon, evening] as TODSection[] };
+  }, [dayItems, hourMap]);
 
   const overdue = useMemo(() => ({
     chores: chores.filter((c) => { const d = parseDateSafe(c.due_date); return !c.completed && d && isBefore(d, today); }),
@@ -237,79 +342,219 @@ const CalendarPage = () => {
         </div>
 
         <Card className="shadow-[var(--card-shadow)]">
-          <CardHeader>
-            <CardTitle className="font-serif text-2xl">
-              {isSameDay(selectedDate, today) ? "Today â€” " : ""}{format(selectedDate, "EEEE, MMMM d")}
-            </CardTitle>
-            <CardDescription>Everything scheduled for this day</CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+            <div>
+              <CardTitle className="font-serif text-2xl">
+                {isSameDay(selectedDate, today) ? "Today — " : ""}{format(selectedDate, "EEEE, MMMM d")}
+              </CardTitle>
+              <CardDescription>Everything scheduled for this day</CardDescription>
+            </div>
+            <Button size="sm" className="gap-1.5" onClick={() => openNewTask()}>
+              <Plus className="h-4 w-4" /> Add task
+            </Button>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {todSections.map((section) => {
-              const total = section.meals.length + section.chores.length + section.tasks.length;
-              return (
-                <section key={section.key}>
-                  <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-                    {section.icon}{section.label}
-                    {total > 0 && <Badge variant="secondary" className="ml-1">{total}</Badge>}
-                  </h3>
-                  {total === 0 ? (
-                    <p className="text-sm text-muted-foreground pl-6">Nothing scheduled</p>
-                  ) : (
-                    <div className="space-y-2 pl-2">
-                      {section.meals.map((m) => (
-                        <div key={m.id} className="flex items-center justify-between rounded-md border bg-card px-3 py-2">
-                          <div className="flex items-center gap-2">
+          <CardContent className="space-y-8">
+            {/* Hourly timeline */}
+            <section>
+              <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Clock className="h-4 w-4 text-primary" /> Hourly
+              </h3>
+              <div className="divide-y rounded-md border">
+                {HOURS.map((h) => {
+                  const bucket = hourlyByHour.get(h);
+                  const total = (bucket?.meals.length ?? 0) + (bucket?.chores.length ?? 0) + (bucket?.tasks.length ?? 0);
+                  return (
+                    <div key={h} className="group grid grid-cols-[64px_1fr_auto] items-start gap-3 px-3 py-2 hover:bg-muted/40">
+                      <div className="text-xs font-medium text-muted-foreground pt-1">{fmtHour(h)}</div>
+                      <div className="space-y-1 min-h-[28px]">
+                        {bucket?.meals.map((m) => (
+                          <div key={m.id} className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5">
                             <UtensilsCrossed className="h-4 w-4 text-primary shrink-0" />
-                            <div>
-                              <p className="text-sm font-medium">{mealLabel(m)}</p>
-                              <p className="text-xs text-muted-foreground capitalize">{SLOT_LABELS[m.slot] ?? m.slot}</p>
-                            </div>
+                            <span className="text-sm">{mealLabel(m)}</span>
+                            <span className="text-xs text-muted-foreground capitalize">· {SLOT_LABELS[m.slot] ?? m.slot}</span>
                           </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary" onClick={() => openEditMeal(m)}>
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-green-600" onClick={() => openLeftover(m)}>
-                              <Archive className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                      {section.chores.map((c) => (
-                        <div key={c.id} className="flex items-center justify-between rounded-md border bg-card px-3 py-2">
-                          <div className="flex items-center gap-2">
+                        ))}
+                        {bucket?.chores.map((c) => (
+                          <div key={c.id} className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5">
                             <Checkbox checked={c.completed} onCheckedChange={() => completeChore.mutate(c.id)} />
                             <ListChecks className="h-4 w-4 text-primary shrink-0" />
                             <span className={`text-sm ${c.completed ? "line-through text-muted-foreground" : ""}`}>{c.title}</span>
-                            {c.recurrence && c.recurrence !== "none" && <Badge variant="outline" className="text-xs">{c.recurrence}</Badge>}
+                            <button type="button" className="ml-auto text-xs text-muted-foreground hover:text-destructive" onClick={() => setHour(`chore:${c.id}`, null)}>clear time</button>
                           </div>
-                          <span className="text-xs text-muted-foreground">{memberName(c.assignee_id)}</span>
-                        </div>
-                      ))}
-                      {section.tasks.map((t) => (
-                        <div key={t.id} className="flex items-center justify-between rounded-md border bg-card px-3 py-2">
-                          <div className="flex items-center gap-2">
+                        ))}
+                        {bucket?.tasks.map((t) => (
+                          <div key={t.id} className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5">
                             <Checkbox checked={t.completed} onCheckedChange={() => completeTask.mutate(t.id)} />
                             <ClipboardList className="h-4 w-4 text-primary shrink-0" />
                             <span className={`text-sm ${t.completed ? "line-through text-muted-foreground" : ""}`}>{t.title}</span>
+                            <Button variant="ghost" size="icon" className="ml-auto h-6 w-6" onClick={() => openEditTask(t)}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
                           </div>
-                          <span className="text-xs text-muted-foreground">{memberName(t.assignee_id)}</span>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
+                      <Button
+                        variant="ghost" size="icon"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100"
+                        title="Add task at this hour"
+                        onClick={() => openNewTask({ hour: h })}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </Button>
+                      {total === 0 && <div className="sr-only">empty</div>}
                     </div>
-                  )}
-                </section>
-              );
-            })}
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* No specific time: Morning / Afternoon / Evening */}
+            <section>
+              <h3 className="mb-3 text-sm font-semibold text-foreground">No specific time</h3>
+              <div className="space-y-5">
+                {todSections.map((section) => {
+                  const total = section.meals.length + section.chores.length + section.tasks.length;
+                  return (
+                    <div key={section.key}>
+                      <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {section.icon}{section.label}
+                        {total > 0 && <Badge variant="secondary" className="ml-1">{total}</Badge>}
+                        <button
+                          type="button"
+                          className="ml-auto inline-flex items-center gap-1 text-xs font-normal normal-case tracking-normal text-muted-foreground hover:text-primary"
+                          onClick={() => openNewTask({ tod: section.key })}
+                        >
+                          <Plus className="h-3 w-3" /> add task
+                        </button>
+                      </h4>
+                      {total === 0 ? (
+                        <p className="text-sm text-muted-foreground pl-6">Nothing scheduled</p>
+                      ) : (
+                        <div className="space-y-2 pl-2">
+                          {section.meals.map((m) => (
+                            <div key={m.id} className="flex items-center justify-between rounded-md border bg-card px-3 py-2">
+                              <div className="flex items-center gap-2">
+                                <UtensilsCrossed className="h-4 w-4 text-primary shrink-0" />
+                                <div>
+                                  <p className="text-sm font-medium">{mealLabel(m)}</p>
+                                  <p className="text-xs text-muted-foreground capitalize">{SLOT_LABELS[m.slot] ?? m.slot}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary" onClick={() => openEditMeal(m)}>
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-green-600" onClick={() => openLeftover(m)}>
+                                  <Archive className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                          {section.chores.map((c) => (
+                            <div key={c.id} className="flex items-center justify-between rounded-md border bg-card px-3 py-2">
+                              <div className="flex items-center gap-2">
+                                <Checkbox checked={c.completed} onCheckedChange={() => completeChore.mutate(c.id)} />
+                                <ListChecks className="h-4 w-4 text-primary shrink-0" />
+                                <span className={`text-sm ${c.completed ? "line-through text-muted-foreground" : ""}`}>{c.title}</span>
+                                {c.recurrence && c.recurrence !== "none" && <Badge variant="outline" className="text-xs">{c.recurrence}</Badge>}
+                              </div>
+                              <span className="text-xs text-muted-foreground">{memberName(c.assignee_id)}</span>
+                            </div>
+                          ))}
+                          {section.tasks.map((t) => (
+                            <div key={t.id} className="flex items-center justify-between rounded-md border bg-card px-3 py-2">
+                              <div className="flex items-center gap-2">
+                                <Checkbox checked={t.completed} onCheckedChange={() => completeTask.mutate(t.id)} />
+                                <ClipboardList className="h-4 w-4 text-primary shrink-0" />
+                                <span className={`text-sm ${t.completed ? "line-through text-muted-foreground" : ""}`}>{t.title}</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-xs text-muted-foreground">{memberName(t.assignee_id)}</span>
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditTask(t)}>
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
           </CardContent>
         </Card>
       </main>
+
+      {/* Task Dialog */}
+      <Dialog open={taskDialogOpen} onOpenChange={setTaskDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{taskDraft.id ? "Edit task" : "Add task"} — {format(selectedDate, "MMM d")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Title</Label>
+              <Input value={taskDraft.title} autoFocus onChange={(e) => setTaskDraft({ ...taskDraft, title: e.target.value })} placeholder="What needs doing?" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Description</Label>
+              <Textarea value={taskDraft.description} rows={2} onChange={(e) => setTaskDraft({ ...taskDraft, description: e.target.value })} placeholder="Optional notes" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Time (optional)</Label>
+                <Input type="time" value={taskDraft.time} onChange={(e) => setTaskDraft({ ...taskDraft, time: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Or part of day</Label>
+                <Select value={taskDraft.time_of_day} onValueChange={(v) => setTaskDraft({ ...taskDraft, time_of_day: v as TaskDraft["time_of_day"] })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="morning">Morning</SelectItem>
+                    <SelectItem value="afternoon">Afternoon</SelectItem>
+                    <SelectItem value="evening">Evening</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Assignee</Label>
+              <Select value={taskDraft.assignee_id} onValueChange={(v) => setTaskDraft({ ...taskDraft, assignee_id: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {members.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="flex sm:justify-between gap-2">
+            {taskDraft.id ? (
+              <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => {
+                if (taskDraft.id) {
+                  deleteTask.mutate(taskDraft.id);
+                  setHour(`task:${taskDraft.id}`, null);
+                  setTaskDialogOpen(false);
+                }
+              }}>
+                <Trash2 className="h-4 w-4 mr-1.5" /> Delete
+              </Button>
+            ) : <span />}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setTaskDialogOpen(false)}>Cancel</Button>
+              <Button onClick={confirmTask} disabled={!taskDraft.title.trim() || saveTask.isPending}>Save</Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Meal Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit {editMeal ? (SLOT_LABELS[editMeal.slot] ?? editMeal.slot) : ""} â€” {format(selectedDate, "MMM d")}</DialogTitle>
+            <DialogTitle>Edit {editMeal ? (SLOT_LABELS[editMeal.slot] ?? editMeal.slot) : ""} — {format(selectedDate, "MMM d")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             {recipes.length > 0 && (
@@ -367,4 +612,3 @@ const CalendarPage = () => {
 };
 
 export default CalendarPage;
-
