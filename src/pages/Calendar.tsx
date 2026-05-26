@@ -370,7 +370,11 @@ const CalendarPage = () => {
                         {bucket?.meals.map((m) => (
                           <div key={m.id} className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5">
                             <UtensilsCrossed className="h-4 w-4 text-primary shrink-0" />
-                            <span className="text-sm">{mealLabel(m)}</span>
+                            {m.link ? (
+                              <a href={m.link} target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline hover:text-primary/80 transition-colors">{mealLabel(m)}</a>
+                            ) : (
+                              <span className="text-sm">{mealLabel(m)}</span>
+                            )}
                             <span className="text-xs text-muted-foreground capitalize">· {SLOT_LABELS[m.slot] ?? m.slot}</span>
                           </div>
                         ))}
@@ -436,7 +440,11 @@ const CalendarPage = () => {
                               <div className="flex items-center gap-2">
                                 <UtensilsCrossed className="h-4 w-4 text-primary shrink-0" />
                                 <div>
-                                  <p className="text-sm font-medium">{mealLabel(m)}</p>
+                                  {m.link ? (
+                                    <a href={m.link} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-primary underline hover:text-primary/80 transition-colors">{mealLabel(m)}</a>
+                                  ) : (
+                                    <p className="text-sm font-medium">{mealLabel(m)}</p>
+                                  )}
                                   <p className="text-xs text-muted-foreground capitalize">{SLOT_LABELS[m.slot] ?? m.slot}</p>
                                 </div>
                               </div>
