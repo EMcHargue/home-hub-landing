@@ -359,99 +359,46 @@ const CalendarPage = () => {
             </Button>
           </CardHeader>
           <CardContent className="space-y-8">
-            {/* Hourly timeline */}
+            {/* Hourly timeline grouped by part of day */}
             <section>
-              <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-                <Clock className="h-4 w-4 text-primary" /> Hourly
-              </h3>
-              <div className="divide-y rounded-md border">
-                {HOURS.map((h) => {
-                  const bucket = hourlyByHour.get(h);
-                  const total = (bucket?.meals.length ?? 0) + (bucket?.chores.length ?? 0) + (bucket?.tasks.length ?? 0);
+              <div className="overflow-hidden rounded-md border">
+                {TOD_RANGES.map((range) => {
+                  const section = todSections.find((s) => s.key === range.key)!;
+                  const unscheduledTotal = section.meals.length + section.chores.length + section.tasks.length;
                   return (
-                    <div key={h} className="group grid grid-cols-[64px_1fr_auto] items-start gap-3 px-3 py-2 hover:bg-muted/40">
-                      <div className="text-xs font-medium text-muted-foreground pt-1">{fmtHour(h)}</div>
-                      <div className="space-y-1 min-h-[28px]">
-                        {bucket?.meals.map((m) => (
-                          <div key={m.id} className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5">
-                            <UtensilsCrossed className="h-4 w-4 text-primary shrink-0" />
-                            {m.link ? (
-                              <a href={m.link} target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline hover:text-primary/80 transition-colors">{mealLabel(m)}</a>
-                            ) : (
-                              <span className="text-sm">{mealLabel(m)}</span>
-                            )}
-                            <span className="text-xs text-muted-foreground capitalize">· {SLOT_LABELS[m.slot] ?? m.slot}</span>
-                          </div>
-                        ))}
-                        {bucket?.chores.map((c) => (
-                          <div key={c.id} className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5">
-                            <Checkbox checked={c.completed} onCheckedChange={() => completeChore.mutate(c.id)} />
-                            <ListChecks className="h-4 w-4 text-primary shrink-0" />
-                            <span className={`text-sm ${c.completed ? "line-through text-muted-foreground" : ""}`}>{c.title}</span>
-                            <button type="button" className="ml-auto text-xs text-muted-foreground hover:text-destructive" onClick={() => setHour(`chore:${c.id}`, null)}>clear time</button>
-                          </div>
-                        ))}
-                        {bucket?.tasks.map((t) => (
-                          <div key={t.id} className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5">
-                            <Checkbox checked={t.completed} onCheckedChange={() => completeTask.mutate(t.id)} />
-                            <ClipboardList className="h-4 w-4 text-primary shrink-0" />
-                            <span className={`text-sm ${t.completed ? "line-through text-muted-foreground" : ""}`}>{t.title}</span>
-                            <Button variant="ghost" size="icon" className="ml-auto h-6 w-6" onClick={() => openEditTask(t)}>
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                      <Button
-                        variant="ghost" size="icon"
-                        className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                        title="Add task at this hour"
-                        onClick={() => openNewTask({ hour: h })}
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                      </Button>
-                      {total === 0 && <div className="sr-only">empty</div>}
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-
-            {/* No specific time: Morning / Afternoon / Evening */}
-            <section>
-              <h3 className="mb-3 text-sm font-semibold text-foreground">No specific time</h3>
-              <div className="space-y-5">
-                {todSections.map((section) => {
-                  const total = section.meals.length + section.chores.length + section.tasks.length;
-                  return (
-                    <div key={section.key}>
-                      <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        {section.icon}{section.label}
-                        {total > 0 && <Badge variant="secondary" className="ml-1">{total}</Badge>}
+                    <div key={range.key} className={range.tint}>
+                      {/* Part-of-day header */}
+                      <div className={`flex items-center gap-2 px-3 py-2 ${range.headerTint} border-y first:border-t-0`}>
+                        {range.key === "morning" && <Sun className="h-4 w-4 text-primary" />}
+                        {range.key === "afternoon" && <Cloud className="h-4 w-4 text-primary" />}
+                        {range.key === "evening" && <Moon className="h-4 w-4 text-primary" />}
+                        <h3 className="text-sm font-semibold text-foreground">{range.label}</h3>
+                        <span className="text-xs text-muted-foreground">
+                          {fmtHour(range.hours[0])} – {fmtHour(range.hours[range.hours.length - 1])}
+                        </span>
                         <button
                           type="button"
-                          className="ml-auto inline-flex items-center gap-1 text-xs font-normal normal-case tracking-normal text-muted-foreground hover:text-primary"
-                          onClick={() => openNewTask({ tod: section.key })}
+                          className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary"
+                          onClick={() => openNewTask({ tod: range.key })}
                         >
                           <Plus className="h-3 w-3" /> add task
                         </button>
-                      </h4>
-                      {total === 0 ? (
-                        <p className="text-sm text-muted-foreground pl-6">Nothing scheduled</p>
-                      ) : (
-                        <div className="space-y-2 pl-2">
+                      </div>
+
+                      {/* Unscheduled (no specific hour) items for this part of day */}
+                      {unscheduledTotal > 0 && (
+                        <div className="px-3 py-2 space-y-1 border-b border-primary/10">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Any time</p>
                           {section.meals.map((m) => (
-                            <div key={m.id} className="flex items-center justify-between rounded-md border bg-card px-3 py-2">
-                              <div className="flex items-center gap-2">
+                            <div key={m.id} className="flex items-center justify-between gap-2 rounded-md border bg-card px-2 py-1.5">
+                              <div className="flex items-center gap-2 min-w-0">
                                 <UtensilsCrossed className="h-4 w-4 text-primary shrink-0" />
-                                <div>
-                                  {m.link ? (
-                                    <a href={m.link} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-primary underline hover:text-primary/80 transition-colors">{mealLabel(m)}</a>
-                                  ) : (
-                                    <p className="text-sm font-medium">{mealLabel(m)}</p>
-                                  )}
-                                  <p className="text-xs text-muted-foreground capitalize">{SLOT_LABELS[m.slot] ?? m.slot}</p>
-                                </div>
+                                {m.link ? (
+                                  <a href={m.link} target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline hover:text-primary/80 truncate">{mealLabel(m)}</a>
+                                ) : (
+                                  <span className="text-sm truncate">{mealLabel(m)}</span>
+                                )}
+                                <span className="text-xs text-muted-foreground capitalize shrink-0">· {SLOT_LABELS[m.slot] ?? m.slot}</span>
                               </div>
                               <div className="flex items-center gap-1 shrink-0">
                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary" onClick={() => openEditMeal(m)}>
@@ -464,24 +411,24 @@ const CalendarPage = () => {
                             </div>
                           ))}
                           {section.chores.map((c) => (
-                            <div key={c.id} className="flex items-center justify-between rounded-md border bg-card px-3 py-2">
-                              <div className="flex items-center gap-2">
+                            <div key={c.id} className="flex items-center justify-between gap-2 rounded-md border bg-card px-2 py-1.5">
+                              <div className="flex items-center gap-2 min-w-0">
                                 <Checkbox checked={c.completed} onCheckedChange={() => completeChore.mutate(c.id)} />
                                 <ListChecks className="h-4 w-4 text-primary shrink-0" />
-                                <span className={`text-sm ${c.completed ? "line-through text-muted-foreground" : ""}`}>{c.title}</span>
+                                <span className={`text-sm truncate ${c.completed ? "line-through text-muted-foreground" : ""}`}>{c.title}</span>
                                 {c.recurrence && c.recurrence !== "none" && <Badge variant="outline" className="text-xs">{c.recurrence}</Badge>}
                               </div>
-                              <span className="text-xs text-muted-foreground">{memberName(c.assignee_id)}</span>
+                              <span className="text-xs text-muted-foreground shrink-0">{memberName(c.assignee_id)}</span>
                             </div>
                           ))}
                           {section.tasks.map((t) => (
-                            <div key={t.id} className="flex items-center justify-between rounded-md border bg-card px-3 py-2">
-                              <div className="flex items-center gap-2">
+                            <div key={t.id} className="flex items-center justify-between gap-2 rounded-md border bg-card px-2 py-1.5">
+                              <div className="flex items-center gap-2 min-w-0">
                                 <Checkbox checked={t.completed} onCheckedChange={() => completeTask.mutate(t.id)} />
                                 <ClipboardList className="h-4 w-4 text-primary shrink-0" />
-                                <span className={`text-sm ${t.completed ? "line-through text-muted-foreground" : ""}`}>{t.title}</span>
+                                <span className={`text-sm truncate ${t.completed ? "line-through text-muted-foreground" : ""}`}>{t.title}</span>
                               </div>
-                              <div className="flex items-center gap-2 shrink-0">
+                              <div className="flex items-center gap-1 shrink-0">
                                 <span className="text-xs text-muted-foreground">{memberName(t.assignee_id)}</span>
                                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditTask(t)}>
                                   <Pencil className="h-3.5 w-3.5" />
@@ -491,6 +438,59 @@ const CalendarPage = () => {
                           ))}
                         </div>
                       )}
+
+                      {/* Hour rows */}
+                      <div className="divide-y divide-primary/10">
+                        {range.hours.map((h) => {
+                          const bucket = hourlyByHour.get(h);
+                          const total = (bucket?.meals.length ?? 0) + (bucket?.chores.length ?? 0) + (bucket?.tasks.length ?? 0);
+                          return (
+                            <div key={h} className="group grid grid-cols-[64px_1fr_auto] items-start gap-3 px-3 py-2 hover:bg-primary/10 transition-colors">
+                              <div className="text-xs font-medium text-muted-foreground pt-1">{fmtHour(h)}</div>
+                              <div className="space-y-1 min-h-[28px]">
+                                {bucket?.meals.map((m) => (
+                                  <div key={m.id} className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5">
+                                    <UtensilsCrossed className="h-4 w-4 text-primary shrink-0" />
+                                    {m.link ? (
+                                      <a href={m.link} target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline hover:text-primary/80 transition-colors">{mealLabel(m)}</a>
+                                    ) : (
+                                      <span className="text-sm">{mealLabel(m)}</span>
+                                    )}
+                                    <span className="text-xs text-muted-foreground capitalize">· {SLOT_LABELS[m.slot] ?? m.slot}</span>
+                                  </div>
+                                ))}
+                                {bucket?.chores.map((c) => (
+                                  <div key={c.id} className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5">
+                                    <Checkbox checked={c.completed} onCheckedChange={() => completeChore.mutate(c.id)} />
+                                    <ListChecks className="h-4 w-4 text-primary shrink-0" />
+                                    <span className={`text-sm ${c.completed ? "line-through text-muted-foreground" : ""}`}>{c.title}</span>
+                                    <button type="button" className="ml-auto text-xs text-muted-foreground hover:text-destructive" onClick={() => setHour(`chore:${c.id}`, null)}>clear time</button>
+                                  </div>
+                                ))}
+                                {bucket?.tasks.map((t) => (
+                                  <div key={t.id} className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5">
+                                    <Checkbox checked={t.completed} onCheckedChange={() => completeTask.mutate(t.id)} />
+                                    <ClipboardList className="h-4 w-4 text-primary shrink-0" />
+                                    <span className={`text-sm ${t.completed ? "line-through text-muted-foreground" : ""}`}>{t.title}</span>
+                                    <Button variant="ghost" size="icon" className="ml-auto h-6 w-6" onClick={() => openEditTask(t)}>
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                              <Button
+                                variant="ghost" size="icon"
+                                className="h-6 w-6 opacity-0 group-hover:opacity-100"
+                                title="Add task at this hour"
+                                onClick={() => openNewTask({ hour: h })}
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                              </Button>
+                              {total === 0 && <div className="sr-only">empty</div>}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 })}
@@ -499,6 +499,7 @@ const CalendarPage = () => {
           </CardContent>
         </Card>
       </main>
+
 
       {/* Task Dialog */}
       <Dialog open={taskDialogOpen} onOpenChange={setTaskDialogOpen}>
