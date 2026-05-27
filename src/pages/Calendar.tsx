@@ -48,6 +48,11 @@ const loadHours = (): HourMap => {
 const saveHours = (m: HourMap) => localStorage.setItem(HOUR_STORE_KEY, JSON.stringify(m));
 
 const HOURS = Array.from({ length: 17 }, (_, i) => i + 6); // 6 AM – 10 PM
+const TOD_RANGES: { key: "morning" | "afternoon" | "evening"; label: string; hours: number[]; tint: string; headerTint: string }[] = [
+  { key: "morning",   label: "Morning",   hours: [6, 7, 8, 9, 10, 11],         tint: "bg-primary/5",  headerTint: "bg-primary/10" },
+  { key: "afternoon", label: "Afternoon", hours: [12, 13, 14, 15, 16, 17],     tint: "bg-primary/10", headerTint: "bg-primary/20" },
+  { key: "evening",   label: "Evening",   hours: [18, 19, 20, 21, 22],         tint: "bg-primary/15", headerTint: "bg-primary/25" },
+];
 const fmtHour = (h: number) => {
   const d = new Date(); d.setHours(h, 0, 0, 0);
   return format(d, "h a");
