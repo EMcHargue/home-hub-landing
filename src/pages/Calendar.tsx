@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format, startOfDay, startOfMonth, endOfMonth, isSameDay, isBefore } from "date-fns";
 
 type Chore = { id: string; title: string; assignee_id: string | null; completed: boolean; due_date: string | null; recurrence?: string; time_of_day?: string | null; };
-type Task  = { id: string; title: string; description?: string | null; assignee_id: string | null; completed: boolean; due_date: string | null; time_of_day?: string | null; };
+type Task  = { id: string; title: string; description?: string | null; assignee_id: string | null; completed: boolean; due_date: string | null; time_of_day?: string | null; scheduled_time?: string | null; };
 
 function parseDateSafe(d: string | null): Date | null {
   if (!d) return null;
@@ -114,7 +114,7 @@ const CalendarPage = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
   const saveTask = useMutation({
-    mutationFn: async (payload: { id?: string; title: string; description: string | null; assignee_id: string | null; due_date: string | null; time_of_day: string; }) => {
+    mutationFn: async (payload: { id?: string; title: string; description: string | null; assignee_id: string | null; due_date: string | null; time_of_day: string; scheduled_time: string | null; }) => {
       const { id, ...body } = payload;
       const url = id ? `/api/tasks/${id}` : `/api/tasks`;
       const method = id ? "PUT" : "POST";
@@ -192,7 +192,7 @@ const CalendarPage = () => {
       description: t.description ?? "",
       assignee_id: t.assignee_id ?? "unassigned",
       time_of_day: (t.time_of_day as "morning" | "afternoon" | "evening") ?? "afternoon",
-      time: hourMap[`task:${t.id}`] ?? "",
+      time: t.scheduled_time ?? "",
     });
     setTaskDialogOpen(true);
   };
@@ -206,12 +206,9 @@ const CalendarPage = () => {
       assignee_id: taskDraft.assignee_id === "unassigned" ? null : taskDraft.assignee_id,
       due_date,
       time_of_day: taskDraft.time_of_day,
+      scheduled_time: taskDraft.time || null,
     }, {
-      onSuccess: (res: { id?: string }) => {
-        const id = taskDraft.id ?? res?.id;
-        if (id) setHour(`task:${id}`, taskDraft.time || null);
-        setTaskDialogOpen(false);
-      },
+      onSuccess: () => setTaskDialogOpen(false),
     });
   };
 
@@ -260,7 +257,7 @@ const CalendarPage = () => {
       else { const tod = (c.time_of_day as "morning" | "afternoon" | "evening") ?? "afternoon"; sections[tod].chores.push(c); }
     });
     dayItems.tasks.forEach((t) => {
-      const h = hourFromTime(hourMap[`task:${t.id}`]);
+      const h = hourFromTime(t.scheduled_time);
       if (h !== null) ensureH(h).tasks.push(t);
       else { const tod = (t.time_of_day as "morning" | "afternoon" | "evening") ?? "afternoon"; sections[tod].tasks.push(t); }
     });
