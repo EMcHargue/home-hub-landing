@@ -20,6 +20,7 @@ import {
   UtensilsCrossed,
   ShoppingCart,
   CalendarDays,
+  BookMarked,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -59,6 +60,13 @@ const sections = [
     description: "Manage your shopping list and plan ingredients from meals.",
     icon: ShoppingCart,
     href: "/shopping",
+    ready: true,
+  },
+  {
+    title: "Recipes to Try",
+    description: "Save recipe links, categorize, rate them, and keep notes.",
+    icon: BookMarked,
+    href: "/recipes",
     ready: true,
   },
   {
