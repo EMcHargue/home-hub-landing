@@ -12,6 +12,7 @@ import Chores from "./pages/Chores.tsx";
 import MealPlanning from "./pages/MealPlanning.tsx";
 import Shopping from "./pages/Shopping.tsx";
 import CalendarPage from "./pages/Calendar.tsx";
+import Recipes from "./pages/Recipes.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -38,6 +39,7 @@ const App = () => (
             <Route path="/meals" element={<ProtectedRoute><MealPlanning /></ProtectedRoute>} />
             <Route path="/shopping" element={<ProtectedRoute><Shopping /></ProtectedRoute>} />
             <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
+            <Route path="/recipes" element={<ProtectedRoute><Recipes /></ProtectedRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
