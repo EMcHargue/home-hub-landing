@@ -15,7 +15,7 @@ import {
   ArrowLeft, ListChecks, UtensilsCrossed, ClipboardList, CalendarDays,
   Sun, Cloud, Moon, Pencil, Archive, Snowflake, Refrigerator, Plus, Trash2, Clock,
 } from "lucide-react";
-import { api, ApiMember, ApiPlannedMeal, ApiRecipe } from "@/lib/api";
+import { api, ApiMember, ApiPlannedMeal, ApiRecipe, ApiCalendarEntry } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfDay, startOfMonth, endOfMonth, isSameDay, isBefore } from "date-fns";
 
@@ -38,6 +38,20 @@ const SLOT_TO_TOD: Record<string, "morning" | "afternoon" | "evening"> = {
 const SLOT_LABELS: Record<string, string> = {
   breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner",
 };
+const TOD_MEAL_LABEL: Record<string, string> = {
+  morning: "Breakfast", afternoon: "Lunch", evening: "Dinner",
+};
+
+const ENTRY_COLORS: Record<string, { bg: string; border: string; text: string; dot: string }> = {
+  rose:   { bg: "bg-rose-50",   border: "border-rose-200",   text: "text-rose-800",   dot: "bg-rose-400"   },
+  blue:   { bg: "bg-blue-50",   border: "border-blue-200",   text: "text-blue-800",   dot: "bg-blue-400"   },
+  green:  { bg: "bg-green-50",  border: "border-green-200",  text: "text-green-800",  dot: "bg-green-400"  },
+  amber:  { bg: "bg-amber-50",  border: "border-amber-200",  text: "text-amber-800",  dot: "bg-amber-400"  },
+  purple: { bg: "bg-purple-50", border: "border-purple-200", text: "text-purple-800", dot: "bg-purple-400" },
+};
+const entryColorClasses = (color: string | null) =>
+  ENTRY_COLORS[color ?? ""] ?? { bg: "bg-card", border: "border-border", text: "text-foreground", dot: "bg-primary" };
+const ENTRY_COLOR_OPTIONS = ["", "rose", "blue", "green", "amber", "purple"] as const;
 
 // ── Local-only hour-of-day overrides (no backend column) ──
 const HOUR_STORE_KEY = "calendar_item_hours_v1";
@@ -66,7 +80,7 @@ const hourFromTime = (t?: string | null): number | null => {
 type TODSection = {
   key: "morning" | "afternoon" | "evening";
   label: string; icon: React.ReactNode;
-  meals: ApiPlannedMeal[]; chores: Chore[]; tasks: Task[];
+  meals: ApiPlannedMeal[]; chores: Chore[]; tasks: Task[]; entries: ApiCalendarEntry[];
 };
 
 const CalendarPage = () => {
@@ -100,6 +114,7 @@ const CalendarPage = () => {
   const { data: tasks    = [] } = useQuery<Task[]>({     queryKey: ["tasks"],     queryFn: () => fetch("/api/tasks").then((r) => r.json()) });
   const { data: meals    = [] } = useQuery<ApiPlannedMeal[]>({ queryKey: ["planned-meals", monthStart, monthEnd], queryFn: () => api.getPlannedMeals(monthStart, monthEnd) });
   const { data: recipes  = [] } = useQuery<ApiRecipe[]>({ queryKey: ["recipes"],  queryFn: () => api.getRecipes() });
+  const { data: calEntries = [] } = useQuery<ApiCalendarEntry[]>({ queryKey: ["calendar-entries", monthStart, monthEnd], queryFn: () => api.getCalendarEntries(monthStart, monthEnd) });
   const { data: categories = [] } = useQuery({ queryKey: ["categories"], queryFn: () => api.getCategories() });
 
   const leftoversCategoryId = useMemo(() => categories.find((c) => c.name.toLowerCase() === "leftovers")?.id ?? null, [categories]);
@@ -134,6 +149,58 @@ const CalendarPage = () => {
     mutationFn: (id: string) => fetch(`/api/tasks/${id}`, { method: "DELETE" }).then((r) => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
+  const saveEntry = useMutation({
+    mutationFn: async (payload: { id?: string; entry_date: string; title: string; description: string | null; all_day: boolean; start_time: string | null; end_time: string | null; time_of_day: string; color: string | null; }) => {
+      const { id, ...body } = payload;
+      const url = id ? `/api/calendar-entries/${id}` : `/api/calendar-entries`;
+      const method = id ? "PUT" : "POST";
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["calendar-entries"] }),
+    onError: (err) => toast({ title: "Failed to save entry", description: String(err), variant: "destructive" }),
+  });
+  const deleteEntry = useMutation({
+    mutationFn: (id: string) => fetch(`/api/calendar-entries/${id}`, { method: "DELETE" }).then((r) => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["calendar-entries"] }),
+  });
+
+  // ── Entry dialog (add/edit) ──
+  type EntryDraft = {
+    id?: string; title: string; description: string;
+    all_day: boolean; start_time: string; end_time: string;
+    time_of_day: "morning" | "afternoon" | "evening" | "all_day"; color: string;
+  };
+  const emptyEntryDraft = (): EntryDraft => ({ title: "", description: "", all_day: true, start_time: "", end_time: "", time_of_day: "all_day", color: "" });
+  const [entryDialogOpen, setEntryDialogOpen] = useState(false);
+  const [entryDraft, setEntryDraft] = useState<EntryDraft>(emptyEntryDraft());
+
+  const openNewEntry = (preset?: { tod?: "morning" | "afternoon" | "evening" }) => {
+    const d = emptyEntryDraft();
+    if (preset?.tod) { d.all_day = false; d.time_of_day = preset.tod; }
+    setEntryDraft(d);
+    setEntryDialogOpen(true);
+  };
+  const openEditEntry = (e: ApiCalendarEntry) => {
+    setEntryDraft({ id: e.id, title: e.title, description: e.description ?? "", all_day: e.all_day, start_time: e.start_time ?? "", end_time: e.end_time ?? "", time_of_day: e.time_of_day, color: e.color ?? "" });
+    setEntryDialogOpen(true);
+  };
+  const confirmEntry = () => {
+    if (!entryDraft.title.trim()) return;
+    let time_of_day: string = entryDraft.time_of_day;
+    if (entryDraft.all_day) { time_of_day = "all_day"; }
+    else if (entryDraft.start_time) {
+      const h = parseInt(entryDraft.start_time.split(":")[0], 10);
+      time_of_day = h >= 18 ? "evening" : h >= 12 ? "afternoon" : "morning";
+    } else if (time_of_day === "all_day") { time_of_day = "morning"; }
+    saveEntry.mutate({
+      id: entryDraft.id, entry_date: format(selectedDate, "yyyy-MM-dd"),
+      title: entryDraft.title.trim(), description: entryDraft.description.trim() || null,
+      all_day: entryDraft.all_day, start_time: entryDraft.start_time || null, end_time: entryDraft.end_time || null,
+      time_of_day, color: entryDraft.color || null,
+    }, { onSuccess: () => setEntryDialogOpen(false) });
+  };
   const updateMeal = useMutation({
     mutationFn: ({ id, recipe_id, custom_name, link, ingredients }: { id: number; recipe_id: number | null; custom_name: string | null; link: string | null; ingredients: string[] | null }) =>
       api.updatePlannedMeal(id, recipe_id, custom_name, link, ingredients),
@@ -235,26 +302,35 @@ const CalendarPage = () => {
 
   // ── Aggregation ──
   const itemsByDay = useMemo(() => {
-    const map = new Map<string, { chores: Chore[]; tasks: Task[]; meals: ApiPlannedMeal[] }>();
-    const ensure = (key: string) => { if (!map.has(key)) map.set(key, { chores: [], tasks: [], meals: [] }); return map.get(key)!; };
+    const map = new Map<string, { chores: Chore[]; tasks: Task[]; meals: ApiPlannedMeal[]; entries: ApiCalendarEntry[] }>();
+    const ensure = (key: string) => { if (!map.has(key)) map.set(key, { chores: [], tasks: [], meals: [], entries: [] }); return map.get(key)!; };
     chores.forEach((c) => { const d = parseDateSafe(c.due_date); if (d) ensure(format(d, "yyyy-MM-dd")).chores.push(c); });
     tasks.forEach((t)  => { const d = parseDateSafe(t.due_date);  if (d) ensure(format(d, "yyyy-MM-dd")).tasks.push(t); });
     meals.forEach((m)  => { ensure(m.plan_date.slice(0, 10)).meals.push(m); });
+    calEntries.forEach((e) => { ensure(e.entry_date.slice(0, 10)).entries.push(e); });
     return map;
-  }, [chores, tasks, meals]);
+  }, [chores, tasks, meals, calEntries]);
 
-  const dayItems = itemsByDay.get(selectedKey) ?? { chores: [], tasks: [], meals: [] };
+  const dayItems = itemsByDay.get(selectedKey) ?? { chores: [], tasks: [], meals: [], entries: [] };
 
   // Split day items into "hourly" (has hour) and "unscheduled" (no hour, grouped by TOD)
-  const { hourlyByHour, todSections } = useMemo(() => {
-    const hourly = new Map<number, { meals: ApiPlannedMeal[]; chores: Chore[]; tasks: Task[] }>();
-    const ensureH = (h: number) => { if (!hourly.has(h)) hourly.set(h, { meals: [], chores: [], tasks: [] }); return hourly.get(h)!; };
+  const { hourlyByHour, todSections, allDayEntries } = useMemo(() => {
+    const hourly = new Map<number, { meals: ApiPlannedMeal[]; chores: Chore[]; tasks: Task[]; entries: ApiCalendarEntry[] }>();
+    const ensureH = (h: number) => { if (!hourly.has(h)) hourly.set(h, { meals: [], chores: [], tasks: [], entries: [] }); return hourly.get(h)!; };
 
-    const morning:   TODSection = { key: "morning",   label: "Morning",   icon: <Sun   className="h-4 w-4 text-yellow-500" />, meals: [], chores: [], tasks: [] };
-    const afternoon: TODSection = { key: "afternoon", label: "Afternoon", icon: <Cloud className="h-4 w-4 text-blue-400"   />, meals: [], chores: [], tasks: [] };
-    const evening:   TODSection = { key: "evening",   label: "Evening",   icon: <Moon  className="h-4 w-4 text-indigo-400" />, meals: [], chores: [], tasks: [] };
+    const morning:   TODSection = { key: "morning",   label: "Morning",   icon: <Sun   className="h-4 w-4 text-yellow-500" />, meals: [], chores: [], tasks: [], entries: [] };
+    const afternoon: TODSection = { key: "afternoon", label: "Afternoon", icon: <Cloud className="h-4 w-4 text-blue-400"   />, meals: [], chores: [], tasks: [], entries: [] };
+    const evening:   TODSection = { key: "evening",   label: "Evening",   icon: <Moon  className="h-4 w-4 text-indigo-400" />, meals: [], chores: [], tasks: [], entries: [] };
     const sections = { morning, afternoon, evening };
 
+    const allDay: ApiCalendarEntry[] = [];
+
+    dayItems.entries.forEach((e) => {
+      if (e.all_day) { allDay.push(e); return; }
+      const h = hourFromTime(e.start_time);
+      if (h !== null) ensureH(h).entries.push(e);
+      else { const tod = (e.time_of_day === "all_day" ? "morning" : e.time_of_day) as "morning" | "afternoon" | "evening"; sections[tod].entries.push(e); }
+    });
     dayItems.meals.forEach((m) => { sections[SLOT_TO_TOD[m.slot] ?? "afternoon"].meals.push(m); });
     dayItems.chores.forEach((c) => {
       const h = hourFromTime(hourMap[`chore:${c.id}`]);
@@ -267,7 +343,7 @@ const CalendarPage = () => {
       else { const tod = (t.time_of_day as "morning" | "afternoon" | "evening") ?? "afternoon"; sections[tod].tasks.push(t); }
     });
 
-    return { hourlyByHour: hourly, todSections: [morning, afternoon, evening] as TODSection[] };
+    return { hourlyByHour: hourly, todSections: [morning, afternoon, evening] as TODSection[], allDayEntries: allDay };
   }, [dayItems, hourMap]);
 
   const overdue = useMemo(() => ({
@@ -351,17 +427,46 @@ const CalendarPage = () => {
               </CardTitle>
               <CardDescription>Everything scheduled for this day</CardDescription>
             </div>
-            <Button size="sm" className="gap-1.5" onClick={() => openNewTask()}>
-              <Plus className="h-4 w-4" /> Add task
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" className="gap-1.5" onClick={() => openNewEntry()}>
+                <Plus className="h-4 w-4" /> Add entry
+              </Button>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => openNewTask()}>
+                <Plus className="h-4 w-4" /> Add task
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-8">
+            {/* All-day entries banner */}
+            {allDayEntries.length > 0 && (
+              <div className="rounded-md border bg-primary/5 px-3 py-2 space-y-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                  <CalendarDays className="h-3 w-3" /> All Day
+                </p>
+                {allDayEntries.map((e) => {
+                  const c = entryColorClasses(e.color);
+                  return (
+                    <div key={e.id} className={`flex items-center justify-between gap-2 rounded-md border px-3 py-2 ${c.bg} ${c.border}`}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className={`h-2 w-2 rounded-full shrink-0 ${c.dot}`} />
+                        <span className={`text-sm font-semibold truncate ${c.text}`}>{e.title}</span>
+                        {e.description && <span className="text-xs text-muted-foreground truncate hidden sm:inline">{e.description}</span>}
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary shrink-0" onClick={() => openEditEntry(e)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Hourly timeline grouped by part of day */}
             <section>
               <div className="overflow-hidden rounded-md border">
                 {TOD_RANGES.map((range) => {
                   const section = todSections.find((s) => s.key === range.key)!;
-                  const unscheduledTotal = section.meals.length + section.chores.length + section.tasks.length;
+                  const unscheduledTotal = section.chores.length + section.tasks.length;
                   return (
                     <div key={range.key} className={range.tint}>
                       {/* Part-of-day header */}
@@ -373,19 +478,15 @@ const CalendarPage = () => {
                         <span className="text-xs text-muted-foreground">
                           {fmtHour(range.hours[0])} – {fmtHour(range.hours[range.hours.length - 1])}
                         </span>
-                        <button
-                          type="button"
-                          className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary"
-                          onClick={() => openNewTask({ tod: range.key })}
-                        >
-                          <Plus className="h-3 w-3" /> add task
-                        </button>
                       </div>
 
-                      {/* Unscheduled (no specific hour) items for this part of day */}
-                      {unscheduledTotal > 0 && (
+                      {/* Meal plan sub-section — Breakfast / Lunch / Dinner */}
+                      {section.meals.length > 0 && (
                         <div className="px-3 py-2 space-y-1 border-b border-primary/10">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Any time</p>
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1 flex items-center gap-1.5">
+                            <UtensilsCrossed className="h-3 w-3" />
+                            {TOD_MEAL_LABEL[range.key]}
+                          </p>
                           {section.meals.map((m) => (
                             <div key={m.id} className="flex items-center justify-between gap-2 rounded-md border bg-card px-2 py-1.5">
                               <div className="flex items-center gap-2 min-w-0">
@@ -395,7 +496,6 @@ const CalendarPage = () => {
                                 ) : (
                                   <span className="text-sm truncate">{mealLabel(m)}</span>
                                 )}
-                                <span className="text-xs text-muted-foreground capitalize shrink-0">· {SLOT_LABELS[m.slot] ?? m.slot}</span>
                               </div>
                               <div className="flex items-center gap-1 shrink-0">
                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary" onClick={() => openEditMeal(m)}>
@@ -407,6 +507,37 @@ const CalendarPage = () => {
                               </div>
                             </div>
                           ))}
+                        </div>
+                      )}
+
+                      {/* Events sub-section (un-timed calendar entries) */}
+                      {section.entries.length > 0 && (
+                        <div className="px-3 py-2 space-y-1 border-b border-primary/10">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1 flex items-center gap-1.5">
+                            <CalendarDays className="h-3 w-3" /> Events
+                          </p>
+                          {section.entries.map((e) => {
+                            const c = entryColorClasses(e.color);
+                            return (
+                              <div key={e.id} className={`flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 ${c.bg} ${c.border}`}>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className={`h-2 w-2 rounded-full shrink-0 ${c.dot}`} />
+                                  <span className={`text-sm font-medium truncate ${c.text}`}>{e.title}</span>
+                                  {e.description && <span className="text-xs text-muted-foreground truncate hidden sm:inline">{e.description}</span>}
+                                </div>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary shrink-0" onClick={() => openEditEntry(e)}>
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Unscheduled chores and tasks (no specific hour) */}
+                      {unscheduledTotal > 0 && (
+                        <div className="px-3 py-2 space-y-1 border-b border-primary/10">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Any time</p>
                           {section.chores.map((c) => (
                             <div key={c.id} className="flex items-center justify-between gap-2 rounded-md border bg-card px-2 py-1.5">
                               <div className="flex items-center gap-2 min-w-0">
@@ -445,6 +576,19 @@ const CalendarPage = () => {
                             <div key={h} className="group grid grid-cols-[64px_1fr_auto] items-start gap-3 px-3 py-2 hover:bg-primary/10 transition-colors">
                               <div className="text-xs font-medium text-muted-foreground pt-1">{fmtHour(h)}</div>
                               <div className="space-y-1 min-h-[28px]">
+                                {bucket?.entries.map((e) => {
+                                  const c = entryColorClasses(e.color);
+                                  return (
+                                    <div key={e.id} className={`flex items-center gap-2 rounded-md border px-2 py-1.5 ${c.bg} ${c.border}`}>
+                                      <div className={`h-2 w-2 rounded-full shrink-0 ${c.dot}`} />
+                                      <span className={`text-sm font-medium truncate ${c.text}`}>{e.title}</span>
+                                      {e.end_time && <span className="text-xs text-muted-foreground shrink-0">– {e.end_time}</span>}
+                                      <Button variant="ghost" size="icon" className="ml-auto h-6 w-6 text-muted-foreground hover:text-primary" onClick={() => openEditEntry(e)}>
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </div>
+                                  );
+                                })}
                                 {bucket?.meals.map((m) => (
                                   <div key={m.id} className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5">
                                     <UtensilsCrossed className="h-4 w-4 text-primary shrink-0" />
@@ -497,6 +641,82 @@ const CalendarPage = () => {
         </Card>
       </main>
 
+
+      {/* Entry Dialog */}
+      <Dialog open={entryDialogOpen} onOpenChange={setEntryDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{entryDraft.id ? "Edit entry" : "Add entry"} — {format(selectedDate, "MMM d")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Title</Label>
+              <Input autoFocus value={entryDraft.title} onChange={(e) => setEntryDraft({ ...entryDraft, title: e.target.value })} placeholder="What's happening?" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Description (optional)</Label>
+              <Input value={entryDraft.description} onChange={(e) => setEntryDraft({ ...entryDraft, description: e.target.value })} placeholder="Details" />
+            </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+              <input type="checkbox" checked={entryDraft.all_day} onChange={(e) => setEntryDraft({ ...entryDraft, all_day: e.target.checked, start_time: "", end_time: "", time_of_day: e.target.checked ? "all_day" : "morning" })} />
+              All day
+            </label>
+            {!entryDraft.all_day && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Start time (optional)</Label>
+                  <Input type="time" value={entryDraft.start_time} onChange={(e) => setEntryDraft({ ...entryDraft, start_time: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>End time (optional)</Label>
+                  <Input type="time" value={entryDraft.end_time} onChange={(e) => setEntryDraft({ ...entryDraft, end_time: e.target.value })} />
+                </div>
+              </div>
+            )}
+            {!entryDraft.all_day && !entryDraft.start_time && (
+              <div className="space-y-1.5">
+                <Label>Part of day</Label>
+                <Select value={entryDraft.time_of_day === "all_day" ? "morning" : entryDraft.time_of_day} onValueChange={(v) => setEntryDraft({ ...entryDraft, time_of_day: v as EntryDraft["time_of_day"] })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="morning">Morning</SelectItem>
+                    <SelectItem value="afternoon">Afternoon</SelectItem>
+                    <SelectItem value="evening">Evening</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label>Color</Label>
+              <div className="flex items-center gap-2">
+                {ENTRY_COLOR_OPTIONS.map((col) => {
+                  const c = entryColorClasses(col || null);
+                  return (
+                    <button
+                      key={col}
+                      type="button"
+                      onClick={() => setEntryDraft({ ...entryDraft, color: col })}
+                      className={`h-6 w-6 rounded-full border-2 transition-all ${col === "" ? "bg-muted border-border" : `${c.dot}`} ${entryDraft.color === col ? "ring-2 ring-offset-1 ring-primary scale-110" : "opacity-70 hover:opacity-100"}`}
+                      title={col || "default"}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="flex sm:justify-between gap-2">
+            {entryDraft.id ? (
+              <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => { if (entryDraft.id) { deleteEntry.mutate(entryDraft.id); setEntryDialogOpen(false); } }}>
+                <Trash2 className="h-4 w-4 mr-1.5" /> Delete
+              </Button>
+            ) : <span />}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setEntryDialogOpen(false)}>Cancel</Button>
+              <Button onClick={confirmEntry} disabled={!entryDraft.title.trim() || saveEntry.isPending}>Save</Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Task Dialog */}
       <Dialog open={taskDialogOpen} onOpenChange={setTaskDialogOpen}>

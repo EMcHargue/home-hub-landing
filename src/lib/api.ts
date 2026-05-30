@@ -49,6 +49,18 @@ export type ApiPlannedMeal = {
   ingredients: string[] | null;
 };
 
+export type ApiCalendarEntry = {
+  id: string;
+  title: string;
+  description: string | null;
+  entry_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  all_day: boolean;
+  time_of_day: "morning" | "afternoon" | "evening" | "all_day";
+  color: string | null;
+};
+
 export type ApiShoppingListLink = {
   id: number;
   week_start: string;
@@ -249,6 +261,29 @@ export const api = {
 
   deleteShoppingListLink: (id: number) =>
     fetch(`${BASE}/shopping-list-links/${id}`, { method: "DELETE" }).then((r) =>
+      json<{ success: boolean }>(r)
+    ),
+
+  // ── Calendar entries ───────────────────────────────────────────────────────
+  getCalendarEntries: (start: string, end: string) =>
+    fetch(`${BASE}/calendar-entries?start=${start}&end=${end}`).then((r) => json<ApiCalendarEntry[]>(r)),
+
+  createCalendarEntry: (entry: Omit<ApiCalendarEntry, "id">) =>
+    fetch(`${BASE}/calendar-entries`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(entry),
+    }).then((r) => json<{ id: string }>(r)),
+
+  updateCalendarEntry: (id: string, entry: Partial<Omit<ApiCalendarEntry, "id">>) =>
+    fetch(`${BASE}/calendar-entries/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(entry),
+    }).then((r) => json<{ success: boolean }>(r)),
+
+  deleteCalendarEntry: (id: string) =>
+    fetch(`${BASE}/calendar-entries/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) =>
       json<{ success: boolean }>(r)
     ),
 
